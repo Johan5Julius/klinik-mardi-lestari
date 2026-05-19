@@ -100,7 +100,7 @@
 /* 1. Hero Section */
 .section-hero {
   position: relative;
-  background-image: url('/assets/images/clinic-bg1.jpg');
+  background-image: url('/assets/images/bgd2.jpeg');
   background-size: cover;
   background-position: center;
   flex-direction: column;
@@ -307,7 +307,7 @@
 
 /* 3. Facilities Section */
 .section-facilities {
-  background-image: url('/assets/images/facilities.png');
+  background-image: url('/assets/images/bgd3.jpeg');
 }
 .section-facilities::after {
   background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 100%);

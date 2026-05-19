@@ -12,7 +12,7 @@ const facilitiesData = {
     icon: <Stethoscope size={64} />,
     color: '#0284c7',
     motto: 'Expert care, without the overnight stay.',
-    bgImage: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
+    bgImage: "url('/assets/images/bgd4.jpg') center/cover no-repeat",
     professionals: [
       { id: 1, name: 'Dr. Sarah Lee', role: 'General Physician', bio: '10+ years experience in general medicine.' },
       { id: 2, name: 'Dr. Michael Chen', role: 'Internal Medicine', bio: 'Specialist in adult diseases and chronic care.' }
@@ -23,7 +23,7 @@ const facilitiesData = {
     icon: <Heart size={64} />,
     color: '#0d9488',
     motto: 'Comfort and healing, round the clock.',
-    bgImage: 'linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%)',
+    bgImage: "url('/assets/images/bgd4.jpeg') center/cover no-repeat",
     professionals: [
       { id: 3, name: 'Dr. Emily Wong', role: 'Chief Resident', bio: 'Overseeing patient recovery and daily rounds.' },
       { id: 4, name: 'Nurse Clara', role: 'Head Nurse', bio: 'Ensuring top-notch patient care and comfort.' }

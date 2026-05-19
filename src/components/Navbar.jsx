@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Search, ArrowDown } from 'lucide-react';
+import { Menu, X, Search, ArrowDown, ShieldCheck } from 'lucide-react';
 import './Navbar.css';
 
 const navLinks = [
@@ -126,6 +126,8 @@ export default function Navbar() {
 
         {/* Right Controls */}
         <div className="nav-right">
+          {/* Admin Login Button - Desktop */}
+
           {/* Hamburger Button */}
           <button
             className="mobile-menu-btn"
@@ -210,6 +212,21 @@ export default function Navbar() {
                       </Link>
                     </motion.div>
                   ))}
+                  <motion.div
+                    initial={{ opacity: 0, x: -30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: navLinks.length * 0.06 + 0.05 }}
+                    className="mobile-overlay-admin-wrap"
+                  >
+                    <Link
+                      to="/admin/login"
+                      className="mobile-overlay-admin-btn"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <ShieldCheck size={18} />
+                      Admin Login
+                    </Link>
+                  </motion.div>
                 </div>
 
                 <div className="mobile-overlay-arrows" aria-hidden="true">

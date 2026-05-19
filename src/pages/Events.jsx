@@ -44,9 +44,7 @@ export default function Events() {
             <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               Events &amp; Activities
             </motion.h1>
-            <motion.p className="events-subtitle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
-              Stay connected with our latest community health programmes.
-            </motion.p>
+            
           </div>
         </section>
 
