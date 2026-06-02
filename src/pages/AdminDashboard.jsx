@@ -316,20 +316,46 @@ export default function AdminDashboard() {
     }
   };
 
-  // Load data from API when component mounts
+  // Load data from API when component mounts (fallback to Supabase if backend unavailable)
   useEffect(() => {
     let mounted = true;
 
     async function loadAll() {
       try {
-        const [doctors, schedules, events, videos, gallery, smartcheck] = await Promise.all([
-          adminApi.doctors.getAll().catch(() => []),
-          adminApi.schedules.getAll().catch(() => []),
-          adminApi.events.getAll().catch(() => []),
-          adminApi.videos.getAll().catch(() => []),
-          adminApi.gallery.getAll().catch(() => []),
-          adminApi.smartcheck.getAll().catch(() => []),
-        ]);
+        let doctors, schedules, events, videos, gallery, smartcheck;
+        let useBackend = false;
+
+        // Try backend first
+        try {
+          const results = await Promise.all([
+            adminApi.doctors.getAll(),
+            adminApi.schedules.getAll(),
+            adminApi.events.getAll(),
+            adminApi.videos.getAll(),
+            adminApi.gallery.getAll(),
+            adminApi.smartcheck.getAll(),
+          ]);
+          [doctors, schedules, events, videos, gallery, smartcheck] = results;
+          useBackend = true;
+        } catch (backendErr) {
+          // Backend failed, fallback to Supabase client
+          console.warn('Backend unavailable, loading from Supabase client:', backendErr.message);
+          const [doctorsRes, schedulesRes, eventsRes, videosRes, galleryRes, smartcheckRes] = await Promise.all([
+            supabase.from('doctors').select('*'),
+            supabase.from('schedules').select('*'),
+            supabase.from('events').select('*').order('date', { ascending: true }),
+            supabase.from('videos').select('*'),
+            supabase.from('gallery').select('*').order('id', { ascending: false }),
+            supabase.from('smartcheck_questions').select('*'),
+          ]);
+
+          doctors = doctorsRes.error ? [] : doctorsRes.data;
+          schedules = schedulesRes.error ? [] : schedulesRes.data;
+          events = eventsRes.error ? [] : eventsRes.data;
+          videos = videosRes.error ? [] : videosRes.data;
+          gallery = galleryRes.error ? [] : galleryRes.data;
+          smartcheck = smartcheckRes.error ? [] : smartcheckRes.data;
+        }
 
         if (!mounted) return;
 
