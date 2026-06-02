@@ -1,0 +1,44 @@
+.videos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.video-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: white;
+}
+
+.video-wrapper {
+  position: relative;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  height: 0;
+  overflow: hidden;
+}
+
+.video-wrapper iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.video-info {
+  padding: 1.5rem;
+}
+
+.video-info h3 {
+  font-size: 1.125rem;
+  color: var(--primary-dark);
+  margin-bottom: 0.5rem;
+}
+
+.video-info p {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}

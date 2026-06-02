@@ -1,0 +1,735 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import {
+  Activity, Users, Calendar, CalendarDays, Video, HelpCircle,
+  Image, Settings, LogOut, Menu, X, Plus, Pencil, Trash2,
+  ChevronRight, Bell,
+} from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { adminApi } from '../lib/adminApi';
+import './AdminDashboard.css';
+
+const LOGO_STORAGE_KEY = 'clinicLogoBase64';
+const LOGO_NAME_KEY = 'clinicLogoName';
+const EVENT_IMAGE_PREFIX = 'eventImage_';
+const DEFAULT_LOGO = '/clinic-logo.png';
+const MAX_LOGO_SIZE_MB = 2;
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function Toast({ msg, onClose }) {
+  return (
+    <motion.div
+      className="admin-toast"
+      initial={{ x: 120, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 120, opacity: 0 }}
+    >
+      ✅ {msg}
+      <button onClick={onClose} aria-label="Close notification">✕</button>
+    </motion.div>
+  );
+}
+
+// ── Generic Table ──────────────────────────────────────────────────────────
+function DataTable({ columns, rows, onAdd, onEdit, onDelete }) {
+  return (
+    <div className="admin-table-wrap">
+      <div className="admin-table-header">
+        <button className="admin-action-btn btn-add" onClick={onAdd} aria-label="Add new record">
+          <Plus size={15} /> Add New
+        </button>
+      </div>
+      <div className="admin-table-scroll">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              {columns.map(c => <th key={c.key}>{c.label}</th>)}
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.id ?? i}>
+                {columns.map(c => (
+                  <td key={c.key}>
+                    {c.badge
+                      ? <span className={`status-badge badge-${String(row[c.key]).toLowerCase().replace(' ', '-')}`}>{row[c.key]}</span>
+                      : row[c.key]}
+                  </td>
+                ))}
+                <td className="action-cell">
+                  <button className="icon-btn edit-btn" onClick={() => onEdit(row)} aria-label={`Edit record`}><Pencil size={15} /></button>
+                  <button className="icon-btn del-btn" onClick={() => onDelete(row)} aria-label={`Delete record`}><Trash2 size={15} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+function Modal({ title, onClose, children }) {
+  return (
+    <motion.div
+      className="modal-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <motion.div
+        className="modal-panel"
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal"><X size={20} /></button>
+        </div>
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Panel configs ──────────────────────────────────────────────────────────
+const PANELS = {
+  doctors: {
+    label: 'Doctor Management',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'name', label: 'Name' },
+      { key: 'specialization', label: 'Specialization' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'status', label: 'Status', badge: true },
+    ],
+    fields: [
+      { key: 'name', label: 'Full Name', type: 'text' },
+      { key: 'specialization', label: 'Specialization', type: 'text' },
+      { key: 'phone', label: 'Phone', type: 'text' },
+      { key: 'status', label: 'Status', type: 'select', options: ['Active', 'On Leave', 'Inactive'] },
+    ],
+  },
+  schedules: {
+    label: 'Schedule Management',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'doctor', label: 'Doctor' },
+      { key: 'day', label: 'Day' },
+      { key: 'time', label: 'Time' },
+      { key: 'room', label: 'Room' },
+    ],
+    fields: [
+      { key: 'doctor', label: 'Doctor Name', type: 'text' },
+      { key: 'day', label: 'Day(s)', type: 'text' },
+      { key: 'time', label: 'Time Range', type: 'text' },
+      { key: 'room', label: 'Room', type: 'text' },
+    ],
+  },
+  events: {
+    label: 'Event Management',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'title', label: 'Title' },
+      { key: 'date', label: 'Date' },
+      { key: 'category', label: 'Category' },
+      { key: 'status', label: 'Status', badge: true },
+    ],
+    fields: [
+      { key: 'title', label: 'Event Title', type: 'text' },
+      { key: 'date', label: 'Date', type: 'date' },
+      { key: 'category', label: 'Category', type: 'select', options: ['Health', 'Education', 'Social'] },
+      { key: 'status', label: 'Status', type: 'select', options: ['Upcoming', 'Ongoing', 'Done'] },
+      { key: 'location', label: 'Location', type: 'text' },
+      { key: 'description', label: 'Description', type: 'textarea' },
+      { key: 'image', label: 'Event Photo', type: 'file' },
+    ],
+  },
+  videos: {
+    label: 'Video Education Management',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'title', label: 'Title' },
+      { key: 'url', label: 'URL' },
+      { key: 'duration', label: 'Duration' },
+    ],
+    fields: [
+      { key: 'title', label: 'Video Title', type: 'text' },
+      { key: 'url', label: 'YouTube URL', type: 'text' },
+      { key: 'duration', label: 'Duration (e.g. 5:30)', type: 'text' },
+    ],
+  },
+  smartcheck: {
+    label: 'Smart Check Questions',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'title', label: 'Question' },
+      { key: 'category', label: 'Category' },
+    ],
+    rows: [
+      { id: 1, title: 'How often do you exercise per week?', category: 'Obesity' },
+      { id: 2, title: 'How often do you consume fast food?', category: 'Obesity' },
+      { id: 3, title: 'Do you feel you are currently overweight?', category: 'Obesity' },
+      { id: 4, title: 'Do you have a family history of high cholesterol?', category: 'Cholesterol' },
+      { id: 5, title: 'How often do you eat fried or greasy foods?', category: 'Cholesterol' },
+    ],
+    fields: [
+      { key: 'title', label: 'Question Text', type: 'textarea' },
+      { key: 'category', label: 'Category', type: 'select', options: ['Obesity', 'Cholesterol'] },
+    ],
+  },
+  gallery: {
+    label: 'Gallery Management',
+    columns: [
+      { key: 'id', label: '#' },
+      { key: 'title', label: 'Title' },
+      { key: 'category', label: 'Category' },
+    ],
+    fields: [
+      { key: 'title', label: 'Photo Title', type: 'text' },
+      { key: 'category', label: 'Category', type: 'select', options: ['Facility', 'Activity'] },
+    ],
+  },
+  branding: {
+    label: 'Branding & Logo',
+  }
+};
+
+const MENU_ITEMS = [
+  { key: 'branding', label: 'Branding', icon: Settings },
+  { key: 'doctors', label: 'Doctors', icon: Users },
+  { key: 'schedules', label: 'Schedules', icon: Calendar },
+  { key: 'events', label: 'Events', icon: CalendarDays },
+  { key: 'videos', label: 'Videos', icon: Video },
+  { key: 'smartcheck', label: 'Smart Check', icon: HelpCircle },
+  { key: 'gallery', label: 'Gallery', icon: Image },
+];
+
+export default function AdminDashboard() {
+  const navigate = useNavigate();
+  const [activePanel, setActivePanel] = useState('doctors');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [modal, setModal] = useState(null); // { type: 'add'|'edit', data: {} }
+  const [formData, setFormData] = useState({});
+
+  // Local row state per panel (will try to load from Supabase)
+  const [rows, setRows] = useState({
+    doctors: [],
+    schedules: [],
+    events: [],
+    videos: [],
+    smartcheck: [...PANELS.smartcheck.rows],
+    gallery: [],
+  });
+  const [brandingPreview, setBrandingPreview] = useState(DEFAULT_LOGO);
+  const [brandingName, setBrandingName] = useState('');
+  const [brandingError, setBrandingError] = useState(null);
+
+  useEffect(() => {
+    const savedLogo = localStorage.getItem(LOGO_STORAGE_KEY);
+    const savedName = localStorage.getItem(LOGO_NAME_KEY);
+    if (savedLogo) setBrandingPreview(savedLogo);
+    if (savedName) setBrandingName(savedName);
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key === LOGO_STORAGE_KEY) {
+        setBrandingPreview(event.newValue || DEFAULT_LOGO);
+      }
+      if (event.key === LOGO_NAME_KEY) {
+        setBrandingName(event.newValue || '');
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  const handleLogoChange = (event) => {
+    setBrandingError(null);
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setBrandingError('Silakan pilih file gambar PNG, JPEG, atau SVG.');
+      return;
+    }
+    if (file.size > MAX_LOGO_SIZE_MB * 1024 * 1024) {
+      setBrandingError(`File terlalu besar. Maksimal ${MAX_LOGO_SIZE_MB} MB.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        setBrandingPreview(result);
+        setBrandingName(file.name);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveBranding = () => {
+    localStorage.setItem(LOGO_STORAGE_KEY, brandingPreview);
+    localStorage.setItem(LOGO_NAME_KEY, brandingName);
+    showToast('Logo berhasil disimpan.');
+  };
+
+  const resetBranding = () => {
+    localStorage.removeItem(LOGO_STORAGE_KEY);
+    localStorage.removeItem(LOGO_NAME_KEY);
+    setBrandingPreview(DEFAULT_LOGO);
+    setBrandingName('');
+    showToast('Logo dikembalikan ke default.');
+  };
+
+  // Upload a file to Supabase Storage under the 'events' bucket.
+  const uploadToStorage = async (file) => {
+    if (!file) return null;
+    try {
+      const filePath = `events/${Date.now()}_${file.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('events')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) {
+        console.warn('Upload error:', uploadError.message || uploadError);
+        return null;
+      }
+
+      const { publicURL } = supabase.storage.from('events').getPublicUrl(filePath);
+      return publicURL || null;
+    } catch (e) {
+      console.warn('Unexpected upload error:', e.message || e);
+      return null;
+    }
+  };
+
+  // Load data from API when component mounts
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAll() {
+      try {
+        const [doctors, schedules, events, videos, gallery, smartcheck] = await Promise.all([
+          adminApi.doctors.getAll().catch(() => []),
+          adminApi.schedules.getAll().catch(() => []),
+          adminApi.events.getAll().catch(() => []),
+          adminApi.videos.getAll().catch(() => []),
+          adminApi.gallery.getAll().catch(() => []),
+          adminApi.smartcheck.getAll().catch(() => []),
+        ]);
+
+        if (!mounted) return;
+
+        // Map schedules to include doctor name
+        const doctorsList = doctors || [];
+        let schedulesList = schedules || [];
+        if (schedulesList.length) {
+          schedulesList = schedulesList.map(s => ({
+            ...s,
+            doctor: doctorsList.find(d => d.id === s.doctor_id)?.name || s.doctor || '',
+            day: s.day || '',
+            time: s.time_slot || s.time || '',
+            room: s.room || ''
+          }));
+        }
+
+        setRows(prev => ({
+          ...prev,
+          doctors: doctors && doctors.length ? doctors : prev.doctors,
+          schedules: schedulesList,
+          events: events && events.length ? events : prev.events,
+          videos: videos && videos.length ? videos : prev.videos,
+          gallery: gallery && gallery.length ? gallery : prev.gallery,
+          smartcheck: smartcheck && smartcheck.length ? smartcheck : prev.smartcheck,
+        }));
+      } catch (e) {
+        console.warn('Error loading admin data:', e.message || e);
+      }
+    }
+
+    loadAll();
+    return () => { mounted = false; };
+  }, []);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const panel = PANELS[activePanel];
+  const currentRows = rows[activePanel];
+
+  const handleAdd = () => {
+    const blank = {};
+    panel.fields.forEach(f => { blank[f.key] = ''; });
+    setFormData(blank);
+    setModal({ type: 'add' });
+  };
+
+  const handleEdit = (row) => {
+    setFormData({ ...row });
+    setModal({ type: 'edit' });
+  };
+
+  const saveEventImage = (row) => {
+    if (!row || (!row.image && !row.image_url) || !row.id) return;
+    try {
+      // Prefer storing base64 preview locally if available (fallback)
+      const toStore = row.image || row.image_url;
+      localStorage.setItem(`${EVENT_IMAGE_PREFIX}${row.id}`, toStore);
+    } catch (e) {
+      console.warn('Unable to save event image locally:', e);
+    }
+  };
+
+  const handleDelete = async (row) => {
+    try {
+      if (activePanel === 'doctors') {
+        await adminApi.doctors.delete(row.id);
+        setRows(prev => ({ ...prev, doctors: prev.doctors.filter(r => r.id !== row.id) }));
+      } else if (activePanel === 'schedules') {
+        await adminApi.schedules.delete(row.id);
+        setRows(prev => ({ ...prev, schedules: prev.schedules.filter(r => r.id !== row.id) }));
+      } else if (activePanel === 'events') {
+        await adminApi.events.delete(row.id);
+        setRows(prev => ({ ...prev, events: prev.events.filter(r => r.id !== row.id) }));
+        if (row?.id) localStorage.removeItem(`${EVENT_IMAGE_PREFIX}${row.id}`);
+      } else if (activePanel === 'gallery') {
+        await adminApi.gallery.delete(row.id);
+        setRows(prev => ({ ...prev, gallery: prev.gallery.filter(r => r.id !== row.id) }));
+      } else if (activePanel === 'videos') {
+        await adminApi.videos.delete(row.id);
+        setRows(prev => ({ ...prev, videos: prev.videos.filter(r => r.id !== row.id) }));
+      } else if (activePanel === 'smartcheck') {
+        await adminApi.smartcheck.delete(row.id);
+        setRows(prev => ({ ...prev, smartcheck: prev.smartcheck.filter(r => r.id !== row.id) }));
+      }
+      showToast('Record deleted successfully.');
+    } catch (err) {
+      console.error('Error deleting record:', err);
+      showToast('Error: ' + (err.message || 'Failed to delete record'));
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      // Handle persistence for all panels through API
+      if (activePanel === 'doctors') {
+        const payload = { name: formData.name, specialization: formData.specialization, phone: formData.phone, status: formData.status };
+        if (modal.type === 'add') {
+          const insertData = await adminApi.doctors.create(payload);
+          setRows(prev => ({ ...prev, doctors: [...prev.doctors, insertData] }));
+          showToast('Doctor added successfully.');
+        } else {
+          const updateData = await adminApi.doctors.update(formData.id, payload);
+          setRows(prev => ({ ...prev, doctors: prev.doctors.map(d => d.id === updateData.id ? updateData : d) }));
+          showToast('Doctor updated successfully.');
+        }
+      } else if (activePanel === 'schedules') {
+        // Find or create doctor
+        let doctorId = null;
+        try {
+          const doctors = await adminApi.doctors.getAll();
+          const found = doctors.find(d => d.name?.toLowerCase() === formData.doctor?.toLowerCase());
+          if (found && found.id) {
+            doctorId = found.id;
+          } else {
+            const newDr = await adminApi.doctors.create({
+              name: formData.doctor,
+              specialization: formData.specialization || 'General',
+              phone: formData.phone || null,
+              status: 'Active'
+            });
+            if (newDr && newDr.id) doctorId = newDr.id;
+          }
+        } catch (e) {
+          console.warn('doctor lookup/create error', e.message || e);
+        }
+
+        const payload = { doctor_id: doctorId, day: formData.day, time_slot: formData.time, room: formData.room };
+        if (modal.type === 'add') {
+          const insertData = await adminApi.schedules.create(payload);
+          const mapped = { ...insertData, doctor: formData.doctor, time: insertData.time_slot || formData.time };
+          setRows(prev => ({ ...prev, schedules: [...prev.schedules, mapped] }));
+          showToast('Schedule added successfully.');
+        } else {
+          const updateData = await adminApi.schedules.update(formData.id, payload);
+          setRows(prev => ({ ...prev, schedules: prev.schedules.map(s => s.id === updateData.id ? { ...updateData, doctor: formData.doctor, time: updateData.time_slot } : s) }));
+          showToast('Schedule updated successfully.');
+        }
+      } else if (activePanel === 'events') {
+        const payload = { title: formData.title, description: formData.description, date: formData.date, category: formData.category, status: formData.status, location: formData.location, image_url: formData.image_url };
+
+        // Upload image if available
+        const file = formData.imageFile || (formData.image instanceof File ? formData.image : null);
+        if (file) {
+          const url = await uploadToStorage(file);
+          if (url) payload.image_url = url;
+        }
+
+        if (modal.type === 'add') {
+          const insertData = await adminApi.events.create(payload);
+          setRows(prev => ({ ...prev, events: [...prev.events, insertData] }));
+          saveEventImage(insertData);
+          showToast('Event added successfully.');
+        } else {
+          const updateData = await adminApi.events.update(formData.id, payload);
+          setRows(prev => ({ ...prev, events: prev.events.map(r => r.id === updateData.id ? updateData : r) }));
+          saveEventImage(updateData);
+          showToast('Event updated successfully.');
+        }
+      } else if (activePanel === 'gallery') {
+        const payload = { title: formData.title, category: formData.category, image_url: formData.image_url || formData.image || null, description: formData.description };
+        if (modal.type === 'add') {
+          const insertData = await adminApi.gallery.create(payload);
+          setRows(prev => ({ ...prev, gallery: [...prev.gallery, insertData] }));
+          showToast('Gallery item added successfully.');
+        } else {
+          const updateData = await adminApi.gallery.update(formData.id, payload);
+          setRows(prev => ({ ...prev, gallery: prev.gallery.map(g => g.id === updateData.id ? updateData : g) }));
+          showToast('Gallery item updated successfully.');
+        }
+      } else if (activePanel === 'videos') {
+        const payload = { title: formData.title, url: formData.url, duration: formData.duration, category: formData.category };
+        if (modal.type === 'add') {
+          const insertData = await adminApi.videos.create(payload);
+          setRows(prev => ({ ...prev, videos: [...prev.videos, insertData] }));
+          showToast('Video added successfully.');
+        } else {
+          const updateData = await adminApi.videos.update(formData.id, payload);
+          setRows(prev => ({ ...prev, videos: prev.videos.map(v => v.id === updateData.id ? updateData : v) }));
+          showToast('Video updated successfully.');
+        }
+      } else if (activePanel === 'smartcheck') {
+        const payload = { question_text: formData.title || formData.question_text, category: formData.category };
+        if (modal.type === 'add') {
+          const insertData = await adminApi.smartcheck.create(payload);
+          setRows(prev => ({ ...prev, smartcheck: [...prev.smartcheck, insertData] }));
+          showToast('Question added successfully.');
+        } else {
+          const updateData = await adminApi.smartcheck.update(formData.id, payload);
+          setRows(prev => ({ ...prev, smartcheck: prev.smartcheck.map(s => s.id === updateData.id ? updateData : s) }));
+          showToast('Question updated successfully.');
+        }
+      }
+    } catch (err) {
+      console.error('Error saving record:', err);
+      showToast('Error: ' + (err.message || 'Failed to save record'));
+    }
+
+    setModal(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // ignore
+    }
+    navigate('/admin/login');
+  };
+
+  return (
+    <div className="admin-dash-root">
+      {/* Sidebar */}
+      <aside className={`admin-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
+        <div className="sidebar-brand">
+          <div className="sidebar-logo"><Activity size={20} /></div>
+          <span>Admin Panel</span>
+          <button className="sidebar-close-btn" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Admin navigation">
+          {MENU_ITEMS.map(item => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                className={`sidebar-item ${activePanel === item.key ? 'sidebar-active' : ''}`}
+                onClick={() => { setActivePanel(item.key); setSidebarOpen(false); }}
+                aria-current={activePanel === item.key ? 'page' : undefined}
+                aria-label={item.label}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+                {activePanel === item.key && <ChevronRight size={14} className="sidebar-arrow" />}
+              </button>
+            );
+          })}
+        </nav>
+
+        <button className="sidebar-logout" onClick={handleLogout} aria-label="Logout">
+          <LogOut size={18} /> Logout
+        </button>
+      </aside>
+
+      {/* Overlay for mobile */}
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} aria-hidden="true" />}
+
+      {/* Main */}
+      <div className="admin-main">
+        {/* Topbar */}
+        <header className="admin-topbar">
+          <div className="topbar-left">
+            <button className="hamburger-btn" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar menu">
+              <Menu size={22} />
+            </button>
+            <h1 className="topbar-title">{panel.label}</h1>
+          </div>
+          <div className="topbar-right">
+            <button className="topbar-icon-btn" aria-label="Notifications"><Bell size={20} /></button>
+            <div className="topbar-avatar" aria-label="Admin user">A</div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="admin-content">
+          <motion.div
+            key={activePanel}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {activePanel === 'branding' ? (
+              <div className="branding-panel">
+                <div className="branding-preview-card">
+                  <div className="branding-preview-frame">
+                    <img src={brandingPreview} alt="Preview logo" className="branding-preview-image" />
+                  </div>
+                  <div className="branding-labels">
+                    <strong>Preview Logo</strong>
+                    <p>{brandingName || 'Logo default saat ini'}</p>
+                  </div>
+                </div>
+
+                <div className="branding-form-card">
+                  <div className="branding-form-row">
+                    <label htmlFor="brand-logo-upload">Upload logo baru</label>
+                    <input
+                      id="brand-logo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="branding-file-input"
+                      aria-describedby="branding-help-text"
+                    />
+                    <p id="branding-help-text" className="branding-help">
+                      Pilih file gambar logo. Ukuran maksimal {MAX_LOGO_SIZE_MB} MB. Gambar akan otomatis menyesuaikan ukuran logo yang ada.
+                    </p>
+                    {brandingError && <p className="branding-error">{brandingError}</p>}
+                  </div>
+
+                  <div className="branding-actions">
+                    <button className="admin-action-btn btn-add" onClick={saveBranding} type="button">Simpan Logo</button>
+                    <button className="admin-action-btn btn-reset" onClick={resetBranding} type="button">Reset ke Default</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <DataTable
+                columns={panel.columns}
+                rows={currentRows}
+                onAdd={handleAdd}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            )}
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Modal */}
+      <AnimatePresence>
+        {modal && (
+          <Modal
+            title={modal.type === 'add' ? `Add ${panel.label}` : `Edit ${panel.label}`}
+            onClose={() => setModal(null)}
+          >
+            <div className="modal-form">
+              {panel.fields.map(field => (
+                <div key={field.key} className="modal-field">
+                  <label htmlFor={`modal-${field.key}`}>{field.label}</label>
+                  {field.type === 'select' ? (
+                    <select
+                      id={`modal-${field.key}`}
+                      value={formData[field.key] || ''}
+                      onChange={e => setFormData(p => ({ ...p, [field.key]: e.target.value }))}
+                    >
+                      <option value="">Select…</option>
+                      {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : field.type === 'textarea' ? (
+                    <textarea
+                      id={`modal-${field.key}`}
+                      value={formData[field.key] || ''}
+                      onChange={e => setFormData(p => ({ ...p, [field.key]: e.target.value }))}
+                      rows={3}
+                    />
+                  ) : field.type === 'file' ? (
+                    <>
+                      <input
+                        id={`modal-${field.key}`}
+                        type="file"
+                        accept="image/*"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (!file.type.startsWith('image/')) return;
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const result = reader.result;
+                            if (typeof result === 'string') {
+                              // store preview and raw File for upload
+                              setFormData(p => ({ ...p, [field.key]: result, [`${field.key}File`]: file }));
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      {formData[field.key] && (
+                        <div className="modal-file-preview">
+                          <img src={formData[field.key]} alt="preview" style={{ maxWidth: 140, display: 'block' }} />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <input
+                      id={`modal-${field.key}`}
+                      type={field.type}
+                      value={formData[field.key] || ''}
+                      onChange={e => setFormData(p => ({ ...p, [field.key]: e.target.value }))}
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="modal-actions">
+                <button className="modal-cancel" onClick={() => setModal(null)}>Cancel</button>
+                <button className="modal-save" onClick={handleSave}>Save</button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+}

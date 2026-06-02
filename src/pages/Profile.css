@@ -1,0 +1,210 @@
+.profile-main { padding-top: 64px; }
+
+/* ── Hero ── */
+.profile-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  padding: 5rem 1.5rem 4rem;
+  text-align: center;
+  color: #fff;
+}
+.profile-hero-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.profile-logo-circle {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #0284c7);
+  display: grid;
+  place-items: center;
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.04em;
+  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.5);
+}
+.profile-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+}
+.profile-tagline {
+  font-size: 1.15rem;
+  color: #93c5fd;
+  font-style: italic;
+}
+.profile-foundation-badge {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 9999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  color: #bae6fd;
+}
+
+/* ── Stats ── */
+.profile-stats-section {
+  background: #fff;
+  padding: 3rem 1.5rem;
+}
+.profile-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+.profile-stat-card {
+  text-align: center;
+  padding: 2rem 1rem;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border-radius: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #2563eb;
+  letter-spacing: -0.04em;
+}
+.stat-label { font-size: 0.9rem; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Motto ── */
+.profile-motto-section { background: #f0f9ff; padding: 2.5rem 1.5rem; }
+.motto-banner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: linear-gradient(135deg, #1e40af, #0284c7);
+  border-radius: 1.5rem;
+  padding: 2rem 2.5rem;
+  color: #fff;
+}
+.motto-icon { flex-shrink: 0; color: #bae6fd; }
+.motto-banner h2 {
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+}
+.motto-banner p { color: #bae6fd; margin-top: 0.25rem; }
+
+/* ── Sections ── */
+.profile-section { padding: 4rem 1.5rem; background: #fff; }
+.profile-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: start; }
+.profile-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #2563eb;
+  margin-bottom: 0.6rem;
+}
+.profile-section-title {
+  font-size: 2rem;
+  color: #0f172a;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+}
+.profile-text { color: #475569; line-height: 1.8; font-size: 1rem; }
+
+.vision-mission-block { display: flex; flex-direction: column; gap: 1.5rem; }
+.vm-card {
+  background: #f8fafc;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+.vm-card p { color: #475569; line-height: 1.7; margin-top: 0.5rem; }
+.mission-list { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.mission-list li {
+  color: #475569;
+  padding-left: 1rem;
+  position: relative;
+  line-height: 1.6;
+}
+.mission-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+/* ── Staff ── */
+.profile-staff-section { background: #f8fafc; padding: 4rem 1.5rem; }
+.section-center-title {
+  text-align: center;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  color: #0f172a;
+  margin-bottom: 2.5rem;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+}
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+.staff-card {
+  text-align: center;
+  padding: 2rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  transition: transform 0.2s;
+}
+.staff-card:hover { transform: translateY(-4px); }
+.staff-avatar {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  font-weight: 900;
+  margin-bottom: 0.5rem;
+}
+.staff-name { font-size: 1rem; font-weight: 700; color: #0f172a; text-transform: none; letter-spacing: normal; }
+.staff-spec { font-size: 0.85rem; color: #2563eb; font-weight: 600; }
+.staff-role { font-size: 0.8rem; color: #64748b; }
+
+/* ── Contact ── */
+.profile-contact-section { background: #fff; padding: 4rem 1.5rem; }
+.contact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.contact-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  gap: 0.6rem;
+  transition: transform 0.2s;
+}
+.contact-card:hover { transform: translateY(-3px); }
+.contact-icon { color: #2563eb; margin-bottom: 0.25rem; }
+.contact-card h4 { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #374151; }
+.contact-card p { color: #475569; font-size: 0.95rem; }
+.contact-card a { color: #2563eb; transition: opacity 0.2s; }
+.contact-card a:hover { opacity: 0.75; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .profile-two-col { grid-template-columns: 1fr; }
+  .contact-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+}
+@media (max-width: 768px) {
+  .profile-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .motto-banner { flex-direction: column; text-align: center; padding: 1.5rem; }
+}
+@media (max-width: 480px) {
+  .profile-stats-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .staff-grid { grid-template-columns: 1fr 1fr; }
+}
