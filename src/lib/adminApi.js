@@ -3,6 +3,20 @@
 
 const API_BASE = 'http://localhost:4000/api';
 
+// Try to parse JSON error body, fallback to text when server returns HTML or plain text
+async function parseApiError(res) {
+  try {
+    const err = await res.json();
+    return err && (err.error || err.message || JSON.stringify(err));
+  } catch (e) {
+    try {
+      const text = await res.text();
+      return text;
+    } catch (e2) {
+      return res.statusText || 'Unknown error';
+    }
+  }
+}
 export const adminApi = {
   // ============ DOCTORS ============
   doctors: {
@@ -18,8 +32,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create doctor');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create doctor');
       }
       return res.json();
     },
@@ -30,8 +44,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update doctor');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update doctor');
       }
       return res.json();
     },
@@ -41,8 +55,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete doctor');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete doctor');
       }
       return res.json();
     },
@@ -62,8 +76,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create schedule');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create schedule');
       }
       return res.json();
     },
@@ -74,8 +88,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update schedule');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update schedule');
       }
       return res.json();
     },
@@ -85,8 +99,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete schedule');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete schedule');
       }
       return res.json();
     },
@@ -106,8 +120,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create event');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create event');
       }
       return res.json();
     },
@@ -118,8 +132,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update event');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update event');
       }
       return res.json();
     },
@@ -129,8 +143,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete event');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete event');
       }
       return res.json();
     },
@@ -150,8 +164,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create video');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create video');
       }
       return res.json();
     },
@@ -162,8 +176,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update video');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update video');
       }
       return res.json();
     },
@@ -173,8 +187,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete video');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete video');
       }
       return res.json();
     },
@@ -194,8 +208,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create gallery item');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create gallery item');
       }
       return res.json();
     },
@@ -206,8 +220,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update gallery item');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update gallery item');
       }
       return res.json();
     },
@@ -217,8 +231,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete gallery item');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete gallery item');
       }
       return res.json();
     },
@@ -238,8 +252,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create smartcheck question');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create smartcheck question');
       }
       return res.json();
     },
@@ -250,8 +264,8 @@ export const adminApi = {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update smartcheck question');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update smartcheck question');
       }
       return res.json();
     },
@@ -261,8 +275,8 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete smartcheck question');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete smartcheck question');
       }
       return res.json();
     },
@@ -273,8 +287,8 @@ export const adminApi = {
         body: JSON.stringify({ newName }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to update category');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update category');
       }
       return res.json();
     },
@@ -284,8 +298,52 @@ export const adminApi = {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to delete category');
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete category');
+      }
+      return res.json();
+    },
+  },
+
+  // ============ FACILITIES ============
+  facilities: {
+    async getAll() {
+      const res = await fetch(`${API_BASE}/facilities`);
+      if (!res.ok) throw new Error('Failed to fetch facilities');
+      return res.json();
+    },
+    async create(data) {
+      const res = await fetch(`${API_BASE}/facilities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to create facility');
+      }
+      return res.json();
+    },
+    async update(id, data) {
+      const res = await fetch(`${API_BASE}/facilities/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update facility');
+      }
+      return res.json();
+    },
+    async delete(id) {
+      const res = await fetch(`${API_BASE}/facilities/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to delete facility');
       }
       return res.json();
     },
@@ -298,8 +356,8 @@ export const adminApi = {
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || `Failed to reset sequence for ${tableName}`);
+      const errMsg = await parseApiError(res);
+      throw new Error(errMsg || `Failed to reset sequence for ${tableName}`);
     }
     return res.json();
   },

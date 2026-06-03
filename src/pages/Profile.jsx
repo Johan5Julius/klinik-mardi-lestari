@@ -56,34 +56,27 @@ export default function Profile() {
   useEffect(() => {
     let mounted = true;
 
-    async function fetchProfile() {
-      try {
-        const { data, error } = await supabase.from('clinic_profile').select('*').single();
-        if (!mounted) return;
-        if (!error && data) {
-          setProfile(prev => ({ ...prev, ...data }));
-        } else if (error) {
-          // Table may not exist yet, keep default profile and log only once.
-          console.warn('Clinic profile not available:', error.message || error);
-        }
-      } catch (err) {
-        console.warn('Unable to load clinic profile from Supabase:', err.message || err);
-      }
-    }
+    // No centralized clinic_profile table in this schema — keep DEFAULT_PROFILE
+    // and only load doctors from the `doctors` table.
 
     async function fetchDoctors() {
       try {
-        const { data, error } = await supabase.from('doctors').select('*').eq('status', 'Active');
+        // Only fetch the doctor(s) related to 'Johan' (read-only display)
+        const { data, error } = await supabase
+          .from('doctors')
+          .select('*');
         if (!mounted) return;
         if (!error && data && data.length > 0) {
           setDoctors(data);
+        } else {
+          // no matching doctor found — keep default local staff
+          console.warn('No doctor named Johan found in Supabase, showing defaults.');
         }
       } catch (err) {
         console.warn('Unable to load doctors from Supabase:', err.message || err);
       }
     }
 
-    fetchProfile();
     fetchDoctors();
     return () => { mounted = false; };
   }, []);

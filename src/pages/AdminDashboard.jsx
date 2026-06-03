@@ -110,30 +110,33 @@ const PANELS = {
       { key: 'id', label: '#' },
       { key: 'name', label: 'Name' },
       { key: 'specialization', label: 'Specialization' },
-      { key: 'phone', label: 'Phone' },
       { key: 'status', label: 'Status', badge: true },
     ],
     fields: [
       { key: 'name', label: 'Full Name', type: 'text' },
       { key: 'specialization', label: 'Specialization', type: 'text' },
-      { key: 'phone', label: 'Phone', type: 'text' },
       { key: 'status', label: 'Status', type: 'select', options: ['Active', 'On Leave', 'Inactive'] },
     ],
   },
   schedules: {
     label: 'Schedule Management',
+  },
+  facilities: {
+    label: 'Facilities Management',
     columns: [
       { key: 'id', label: '#' },
-      { key: 'doctor', label: 'Doctor' },
-      { key: 'day', label: 'Day' },
-      { key: 'time', label: 'Time' },
-      { key: 'room', label: 'Room' },
+      { key: 'name', label: 'Name' },
+      { key: 'slug', label: 'Slug' },
+      { key: 'motto', label: 'Motto' },
+      { key: 'icon', label: 'Icon' },
     ],
     fields: [
-      { key: 'doctor', label: 'Doctor Name', type: 'text' },
-      { key: 'day', label: 'Day(s)', type: 'text' },
-      { key: 'time', label: 'Time Range', type: 'text' },
-      { key: 'room', label: 'Room', type: 'text' },
+      { key: 'name', label: 'Facility Name', type: 'text' },
+      { key: 'slug', label: 'Slug (e.g., outpatient)', type: 'text' },
+      { key: 'description', label: 'Description', type: 'textarea' },
+      { key: 'color', label: 'Theme Color (Hex, e.g., #0284c7)', type: 'text' },
+      { key: 'motto', label: 'Motto', type: 'text' },
+      { key: 'icon', label: 'Icon Name (e.g., Stethoscope, Heart, Activity, ShieldPlus, Home)', type: 'select', options: ['Stethoscope', 'Heart', 'Activity', 'ShieldPlus', 'Home', 'Hospital'] },
     ],
   },
   events: {
@@ -210,6 +213,7 @@ const MENU_ITEMS = [
   { key: 'branding', label: 'Branding', icon: Settings },
   { key: 'doctors', label: 'Doctors', icon: Users },
   { key: 'schedules', label: 'Schedules', icon: Calendar },
+  { key: 'facilities', label: 'Facilities', icon: Activity },
   { key: 'events', label: 'Events', icon: CalendarDays },
   { key: 'videos', label: 'Videos', icon: Video },
   { key: 'smartcheck', label: 'Smart Check', icon: HelpCircle },
@@ -228,6 +232,7 @@ export default function AdminDashboard() {
   const [rows, setRows] = useState({
     doctors: [],
     schedules: [],
+    facilities: [],
     events: [],
     videos: [],
     smartcheck: [...PANELS.smartcheck.rows],
@@ -342,27 +347,27 @@ export default function AdminDashboard() {
 
     async function loadAll() {
       try {
-        let doctors, schedules, events, videos, gallery, smartcheck;
-        let useBackend = false;
+        let doctors, schedules, facilities, events, videos, gallery, smartcheck;
 
         // Try backend first
         try {
           const results = await Promise.all([
             adminApi.doctors.getAll(),
             adminApi.schedules.getAll(),
+            adminApi.facilities.getAll(),
             adminApi.events.getAll(),
             adminApi.videos.getAll(),
             adminApi.gallery.getAll(),
             adminApi.smartcheck.getAll(),
           ]);
-          [doctors, schedules, events, videos, gallery, smartcheck] = results;
-          useBackend = true;
+          [doctors, schedules, facilities, events, videos, gallery, smartcheck] = results;
         } catch (backendErr) {
           // Backend failed, fallback to Supabase client
           console.warn('Backend unavailable, loading from Supabase client:', backendErr.message);
-          const [doctorsRes, schedulesRes, eventsRes, videosRes, galleryRes, smartcheckRes] = await Promise.all([
+          const [doctorsRes, schedulesRes, facilitiesRes, eventsRes, videosRes, galleryRes, smartcheckRes] = await Promise.all([
             supabase.from('doctors').select('*'),
             supabase.from('schedules').select('*'),
+            supabase.from('facilities').select('*').order('id', { ascending: true }),
             supabase.from('events').select('*').order('date', { ascending: true }),
             supabase.from('videos').select('*'),
             supabase.from('gallery').select('*').order('id', { ascending: false }),
@@ -371,6 +376,7 @@ export default function AdminDashboard() {
 
           doctors = doctorsRes.error ? [] : doctorsRes.data;
           schedules = schedulesRes.error ? [] : schedulesRes.data;
+          facilities = facilitiesRes.error ? [] : facilitiesRes.data;
           events = eventsRes.error ? [] : eventsRes.data;
           videos = videosRes.error ? [] : videosRes.data;
           gallery = galleryRes.error ? [] : galleryRes.data;
@@ -381,6 +387,7 @@ export default function AdminDashboard() {
 
         // Map schedules to include doctor name
         const doctorsList = doctors || [];
+        const facilitiesList = facilities || [];
         let schedulesList = schedules || [];
         if (schedulesList.length) {
           schedulesList = schedulesList.map(s => ({
@@ -388,7 +395,7 @@ export default function AdminDashboard() {
             doctor: doctorsList.find(d => d.id === s.doctor_id)?.name || s.doctor || '',
             day: s.day || '',
             time: s.time_slot || s.time || '',
-            room: s.room || ''
+            room: s.room || facilitiesList.find(f => f.id === s.facility_id)?.name || ''
           }));
         }
 
@@ -396,6 +403,7 @@ export default function AdminDashboard() {
           ...prev,
           doctors: doctors && doctors.length ? doctors : prev.doctors,
           schedules: schedulesList,
+          facilities: facilitiesList.length ? facilitiesList : prev.facilities,
           events: events && events.length ? events : prev.events,
           videos: videos && videos.length ? videos : prev.videos,
           gallery: gallery && gallery.length ? gallery : prev.gallery,
@@ -419,6 +427,7 @@ export default function AdminDashboard() {
   const currentRows = rows[activePanel];
 
   const handleAdd = () => {
+    if (!panel.fields) return; // panels with custom UI (schedules) handle their own add
     const blank = {};
     panel.fields.forEach(f => { blank[f.key] = ''; });
     setFormData(blank);
@@ -455,6 +464,9 @@ export default function AdminDashboard() {
       } else if (activePanel === 'schedules') {
         await adminApi.schedules.delete(row.id);
         setRows(prev => ({ ...prev, schedules: prev.schedules.filter(r => r.id !== row.id) }));
+      } else if (activePanel === 'facilities') {
+        await adminApi.facilities.delete(row.id);
+        setRows(prev => ({ ...prev, facilities: prev.facilities.filter(r => r.id !== row.id) }));
       } else if (activePanel === 'events') {
         await adminApi.events.delete(row.id);
         setRows(prev => ({ ...prev, events: prev.events.filter(r => r.id !== row.id) }));
@@ -480,7 +492,7 @@ export default function AdminDashboard() {
     try {
       // Handle persistence for all panels through API
       if (activePanel === 'doctors') {
-        const payload = { name: formData.name, specialization: formData.specialization, phone: formData.phone, status: formData.status };
+        const payload = { name: formData.name, specialization: formData.specialization, status: formData.status };
         if (modal.type === 'add') {
           const insertData = await adminApi.doctors.create(payload);
           setRows(prev => ({ ...prev, doctors: [...prev.doctors, insertData] }));
@@ -490,37 +502,16 @@ export default function AdminDashboard() {
           setRows(prev => ({ ...prev, doctors: prev.doctors.map(d => d.id === updateData.id ? updateData : d) }));
           showToast('Doctor updated successfully.');
         }
-      } else if (activePanel === 'schedules') {
-        // Find or create doctor
-        let doctorId = null;
-        try {
-          const doctors = await adminApi.doctors.getAll();
-          const found = doctors.find(d => d.name?.toLowerCase() === formData.doctor?.toLowerCase());
-          if (found && found.id) {
-            doctorId = found.id;
-          } else {
-            const newDr = await adminApi.doctors.create({
-              name: formData.doctor,
-              specialization: formData.specialization || 'General',
-              phone: formData.phone || null,
-              status: 'Active'
-            });
-            if (newDr && newDr.id) doctorId = newDr.id;
-          }
-        } catch (e) {
-          console.warn('doctor lookup/create error', e.message || e);
-        }
-
-        const payload = { doctor_id: doctorId, day: formData.day, time_slot: formData.time, room: formData.room };
+      } else if (activePanel === 'facilities') {
+        const payload = { name: formData.name, slug: formData.slug, description: formData.description, color: formData.color, motto: formData.motto, icon: formData.icon };
         if (modal.type === 'add') {
-          const insertData = await adminApi.schedules.create(payload);
-          const mapped = { ...insertData, doctor: formData.doctor, time: insertData.time_slot || formData.time };
-          setRows(prev => ({ ...prev, schedules: [...prev.schedules, mapped] }));
-          showToast('Schedule added successfully.');
+          const insertData = await adminApi.facilities.create(payload);
+          setRows(prev => ({ ...prev, facilities: [...prev.facilities, insertData] }));
+          showToast('Facility added successfully.');
         } else {
-          const updateData = await adminApi.schedules.update(formData.id, payload);
-          setRows(prev => ({ ...prev, schedules: prev.schedules.map(s => s.id === updateData.id ? { ...updateData, doctor: formData.doctor, time: updateData.time_slot } : s) }));
-          showToast('Schedule updated successfully.');
+          const updateData = await adminApi.facilities.update(formData.id, payload);
+          setRows(prev => ({ ...prev, facilities: prev.facilities.map(f => f.id === updateData.id ? updateData : f) }));
+          showToast('Facility updated successfully.');
         }
       } else if (activePanel === 'events') {
         const existingEventUrl = typeof formData.image === 'string' && !formData.image.startsWith('data:') ? formData.image : formData.image_url;
@@ -719,6 +710,14 @@ export default function AdminDashboard() {
                 setRows={setRows}
                 showToast={showToast}
               />
+            ) : activePanel === 'schedules' ? (
+              <SchedulesAccordionPanel
+                doctors={rows.doctors}
+                schedules={rows.schedules}
+                facilities={rows.facilities}
+                setRows={setRows}
+                showToast={showToast}
+              />
             ) : (
               <DataTable
                 columns={panel.columns}
@@ -740,7 +739,7 @@ export default function AdminDashboard() {
             onClose={() => setModal(null)}
           >
             <div className="modal-form">
-              {panel.fields.map(field => (
+              {(panel.fields || []).map(field => (
                 <div key={field.key} className="modal-field">
                   <label htmlFor={`modal-${field.key}`}>{field.label}</label>
                   {field.type === 'select' ? (
@@ -808,6 +807,255 @@ export default function AdminDashboard() {
       {/* Toast */}
       <AnimatePresence>
         {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Schedules Accordion Panel ──────────────────────────────────────────────
+function SchedulesAccordionPanel({ doctors, schedules, facilities, setRows, showToast }) {
+  const [expandedDoctors, setExpandedDoctors] = useState(new Set());
+  const [localModal, setLocalModal] = useState(null);
+  const [schedForm, setSchedForm] = useState({ day: '', time_slot: '', facility_id: '', room: '' });
+  const [targetDoctor, setTargetDoctor] = useState(null);
+  const [targetSchedule, setTargetSchedule] = useState(null);
+
+  const toggleDoctor = (docId) => {
+    setExpandedDoctors(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId); else next.add(docId);
+      return next;
+    });
+  };
+
+  const getDoctorSchedules = (docId) =>
+    schedules.filter(s => s.doctor_id === docId || (s.doctor_id == null && s.doctor === doctors.find(d => d.id === docId)?.name));
+
+  const openAddSchedule = (doc) => {
+    setTargetDoctor(doc);
+    setTargetSchedule(null);
+    setSchedForm({ day: '', time_slot: '', facility_id: '', room: '' });
+    setLocalModal('add');
+  };
+
+  const openEditSchedule = (doc, sched) => {
+    setTargetDoctor(doc);
+    setTargetSchedule(sched);
+    setSchedForm({
+      day: sched.day || '',
+      time_slot: sched.time_slot || sched.time || '',
+      facility_id: sched.facility_id || '',
+      room: sched.room || '',
+    });
+    setLocalModal('edit');
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!schedForm.day.trim() || !schedForm.time_slot.trim()) {
+      showToast('Please fill in Day and Time Slot.');
+      return;
+    }
+    try {
+      const selectedFacility = facilities.find(f => String(f.id) === String(schedForm.facility_id));
+      const payload = {
+        doctor_id: targetDoctor.id,
+        day: schedForm.day,
+        time_slot: schedForm.time_slot,
+        facility_id: schedForm.facility_id || null,
+        room: selectedFacility ? selectedFacility.name : schedForm.room || '',
+      };
+
+      if (localModal === 'add') {
+        const inserted = await adminApi.schedules.create(payload);
+        const mapped = {
+          ...inserted,
+          doctor: targetDoctor.name,
+          time: inserted.time_slot,
+          room: selectedFacility ? selectedFacility.name : inserted.room || '',
+        };
+        setRows(prev => ({ ...prev, schedules: [...prev.schedules, mapped] }));
+        showToast('Schedule added successfully.');
+      } else {
+        const updated = await adminApi.schedules.update(targetSchedule.id, payload);
+        const mapped = {
+          ...updated,
+          doctor: targetDoctor.name,
+          time: updated.time_slot,
+          room: selectedFacility ? selectedFacility.name : updated.room || '',
+        };
+        setRows(prev => ({
+          ...prev,
+          schedules: prev.schedules.map(s => s.id === mapped.id ? mapped : s)
+        }));
+        showToast('Schedule updated successfully.');
+      }
+      setLocalModal(null);
+    } catch (err) {
+      showToast('Error: ' + (err.message || 'Failed to save schedule'));
+    }
+  };
+
+  const handleDeleteSchedule = async (schedId) => {
+    if (!window.confirm('Delete this schedule?')) return;
+    try {
+      await adminApi.schedules.delete(schedId);
+      setRows(prev => ({ ...prev, schedules: prev.schedules.filter(s => s.id !== schedId) }));
+      showToast('Schedule deleted.');
+    } catch (err) {
+      showToast('Error: ' + (err.message || 'Failed to delete schedule'));
+    }
+  };
+
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  return (
+    <div className="smartcheck-accordion-panel">
+      {doctors.length === 0 && (
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', background: '#fff', borderRadius: '1rem' }}>
+          <p>No doctors found. Please add doctors first in the <strong>Doctors</strong> panel.</p>
+        </div>
+      )}
+
+      <div className="accordion-list">
+        {doctors.map(doc => {
+          const docSchedules = getDoctorSchedules(doc.id);
+          const isExpanded = expandedDoctors.has(doc.id);
+
+          return (
+            <div key={doc.id} className="accordion-item glass-panel">
+              <div className="accordion-header" onClick={() => toggleDoctor(doc.id)}>
+                <div className="accordion-header-left">
+                  <ChevronRight size={18} className={`accordion-arrow ${isExpanded ? 'rotated' : ''}`} />
+                  <div className="sched-doc-avatar" style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: `hsl(${(doc.id * 55) % 360}, 60%, 88%)`,
+                    color: `hsl(${(doc.id * 55) % 360}, 60%, 35%)`,
+                    display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
+                  }}>
+                    {doc.name?.split(' ').pop()?.[0] || '?'}
+                  </div>
+                  <div>
+                    <span className="category-title">{doc.name}</span>
+                    <span style={{ marginLeft: '0.6rem', fontSize: '0.8rem', color: '#2563eb', fontWeight: 600 }}>
+                      {doc.specialization}
+                    </span>
+                  </div>
+                  <span className="question-count">({docSchedules.length} schedule{docSchedules.length !== 1 ? 's' : ''})</span>
+                </div>
+                <div className="category-actions" onClick={e => e.stopPropagation()}>
+                  <span className={`status-badge badge-${(doc.status || 'active').toLowerCase().replace(' ', '-')}`}>
+                    {doc.status || 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="accordion-content">
+                  {docSchedules.length === 0 ? (
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1rem', fontStyle: 'italic' }}>
+                      No schedules for this doctor yet.
+                    </p>
+                  ) : (
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Day</th>
+                            <th>Time Slot</th>
+                            <th>Room / Facility</th>
+                            <th style={{ textAlign: 'center' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {docSchedules.map((s, idx) => (
+                            <tr key={s.id || idx}>
+                              <td>{s.day}</td>
+                              <td>{s.time_slot || s.time}</td>
+                              <td>
+                                <span style={{
+                                  background: '#eff6ff', color: '#2563eb',
+                                  padding: '0.2rem 0.6rem', borderRadius: '9999px',
+                                  fontSize: '0.8rem', fontWeight: 700
+                                }}>
+                                  {s.room || '—'}
+                                </span>
+                              </td>
+                              <td className="action-cell" style={{ justifyContent: 'center' }}>
+                                <button className="icon-btn edit-btn" onClick={() => openEditSchedule(doc, s)} aria-label="Edit schedule"><Pencil size={14} /></button>
+                                <button className="icon-btn del-btn" onClick={() => handleDeleteSchedule(s.id)} aria-label="Delete schedule"><Trash2 size={14} /></button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <button className="btn-add-q" onClick={() => openAddSchedule(doc)}>
+                    <Plus size={14} /> Add Schedule for {doc.name}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Schedule Modal */}
+      <AnimatePresence>
+        {localModal && (
+          <Modal
+            title={localModal === 'add' ? `Add Schedule — ${targetDoctor?.name}` : `Edit Schedule — ${targetDoctor?.name}`}
+            onClose={() => setLocalModal(null)}
+          >
+            <div className="modal-form">
+              <div className="modal-field">
+                <label htmlFor="sched-day">Day</label>
+                <select
+                  id="sched-day"
+                  value={schedForm.day}
+                  onChange={e => setSchedForm(p => ({ ...p, day: e.target.value }))}
+                >
+                  <option value="">Select day…</option>
+                  {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div className="modal-field">
+                <label htmlFor="sched-time">Time Slot (e.g. 08:00 – 12:00)</label>
+                <input
+                  id="sched-time"
+                  type="text"
+                  placeholder="e.g. 08:00 – 12:00"
+                  value={schedForm.time_slot}
+                  onChange={e => setSchedForm(p => ({ ...p, time_slot: e.target.value }))}
+                />
+              </div>
+              <div className="modal-field">
+                <label htmlFor="sched-facility">Room / Facility</label>
+                <select
+                  id="sched-facility"
+                  value={schedForm.facility_id}
+                  onChange={e => {
+                    const fac = facilities.find(f => String(f.id) === e.target.value);
+                    setSchedForm(p => ({
+                      ...p,
+                      facility_id: e.target.value,
+                      room: fac ? fac.name : p.room,
+                    }));
+                  }}
+                >
+                  <option value="">Select facility / room…</option>
+                  {facilities.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button className="modal-cancel" onClick={() => setLocalModal(null)}>Cancel</button>
+                <button className="modal-save" onClick={handleSaveSchedule}>Save</button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </AnimatePresence>
     </div>
   );

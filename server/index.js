@@ -133,9 +133,9 @@ app.get('/api/schedules', async (req, res) => {
 });
 
 app.post('/api/schedules', async (req, res) => {
-  const { doctor_id, day, time_slot, room } = req.body;
+  const { doctor_id, day, time_slot, room, facility_id } = req.body;
   const { data, error } = await supabase.from('schedules')
-    .insert([{ doctor_id, day, time_slot, room }])
+    .insert([{ doctor_id, day, time_slot, room, facility_id }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -144,9 +144,9 @@ app.post('/api/schedules', async (req, res) => {
 
 app.put('/api/schedules/:id', async (req, res) => {
   const { id } = req.params;
-  const { doctor_id, day, time_slot, room } = req.body;
+  const { doctor_id, day, time_slot, room, facility_id } = req.body;
   const { data, error } = await supabase.from('schedules')
-    .update({ doctor_id, day, time_slot, room })
+    .update({ doctor_id, day, time_slot, room, facility_id })
     .eq('id', id)
     .select()
     .single();
@@ -157,6 +157,42 @@ app.put('/api/schedules/:id', async (req, res) => {
 app.delete('/api/schedules/:id', async (req, res) => {
   const { id } = req.params;
   const { error } = await supabase.from('schedules').delete().eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, id });
+});
+
+// ============ FACILITIES ============
+app.get('/api/facilities', async (req, res) => {
+  const { data, error } = await supabase.from('facilities').select('*').order('id', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/facilities', async (req, res) => {
+  const { slug, name, description, color, motto, icon } = req.body;
+  const { data, error } = await supabase.from('facilities')
+    .insert([{ slug, name, description, color, motto, icon }])
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.put('/api/facilities/:id', async (req, res) => {
+  const { id } = req.params;
+  const { slug, name, description, color, motto, icon } = req.body;
+  const { data, error } = await supabase.from('facilities')
+    .update({ slug, name, description, color, motto, icon })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/facilities/:id', async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabase.from('facilities').delete().eq('id', id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true, id });
 });
@@ -335,6 +371,7 @@ const sequences = {
   videos: 'videos_id_seq',
   gallery: 'gallery_id_seq',
   smartcheck_questions: 'smartcheck_questions_id_seq',
+  facilities: 'facilities_id_seq',
 };
 
 app.post('/api/reset-sequence/:table', async (req, res) => {
