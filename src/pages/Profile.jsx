@@ -50,6 +50,7 @@ const DEFAULT_PROFILE = {
 
 export default function Profile() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [doctors, setDoctors] = useState(DEFAULT_PROFILE.staff);
   const p = profile;
 
   useEffect(() => {
@@ -70,7 +71,20 @@ export default function Profile() {
       }
     }
 
+    async function fetchDoctors() {
+      try {
+        const { data, error } = await supabase.from('doctors').select('*').eq('status', 'Active');
+        if (!mounted) return;
+        if (!error && data && data.length > 0) {
+          setDoctors(data);
+        }
+      } catch (err) {
+        console.warn('Unable to load doctors from Supabase:', err.message || err);
+      }
+    }
+
     fetchProfile();
+    fetchDoctors();
     return () => { mounted = false; };
   }, []);
 
@@ -154,14 +168,14 @@ export default function Profile() {
           <div className="container">
             <motion.h2 className="section-center-title" {...fadeUp(0)}>Medical Staff</motion.h2>
             <div className="staff-grid">
-              {p.staff.map((s, i) => (
-                <motion.div key={s.id} className="staff-card glass-panel" {...fadeUp(i * 0.08)}>
-                  <div className="staff-avatar" style={{ background: `hsl(${i * 55}, 70%, 90%)`, color: `hsl(${i * 55}, 60%, 35%)` }}>
-                    {s.name.split(' ').slice(-1)[0][0]}
+              {doctors.map((s, i) => (
+                <motion.div key={s.id || i} className="staff-card glass-panel" {...fadeUp(i * 0.08)}>
+                  <div className="staff-avatar" style={{ background: `hsl(${(i * 55) % 360}, 70%, 90%)`, color: `hsl(${(i * 55) % 360}, 60%, 35%)` }}>
+                    {s.name ? s.name.split(' ').slice(-1)[0][0] : '?'}
                   </div>
                   <h3 className="staff-name">{s.name}</h3>
                   <span className="staff-spec">{s.specialization}</span>
-                  <span className="staff-role">{s.role}</span>
+                  {s.role && <span className="staff-role">{s.role}</span>}
                 </motion.div>
               ))}
             </div>

@@ -47,7 +47,7 @@
   display: grid;
   place-items: center;
 }
-.gallery-emoji { font-size: 3rem; }
+.gallery-emoji { font-size: clamp(2.4rem, 5vw, 3.5rem); }
 
 .gallery-overlay {
   position: absolute;
@@ -103,7 +103,7 @@
   display: grid;
   place-items: center;
 }
-.lightbox-emoji { font-size: 5rem; }
+.lightbox-emoji { font-size: clamp(4rem, 10vw, 6rem); }
 .lightbox-info {
   padding: 1.25rem 1.5rem;
   display: flex;

@@ -5,9 +5,72 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+// Helper to ensure storage bucket exists
+const ensureBucketExists = async (bucketName) => {
+  try {
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    if (listError) return;
+    const exists = buckets.some(b => b.name === bucketName);
+    if (!exists) {
+      console.log(`Bucket "${bucketName}" not found. Creating programmatically...`);
+      await supabase.storage.createBucket(bucketName, {
+        public: true,
+        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+      });
+    }
+  } catch (e) {
+    console.warn('Error ensuring bucket exists:', e.message);
+  }
+};
+
+// ============ FILE UPLOAD (BYPASS RLS VIA SERVICE KEY) ============
+app.post('/api/upload', async (req, res) => {
+  const { file, name, folder } = req.body;
+  if (!file || !name) {
+    return res.status(400).json({ error: 'File data and file name are required.' });
+  }
+
+  try {
+    const matches = file.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ error: 'Invalid base64 image data format.' });
+    }
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    const folderName = folder || 'events';
+    const filePath = `${folderName}/${Date.now()}_${name}`;
+
+    // Ensure the bucket exists before attempting upload
+    await ensureBucketExists('events');
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('events')
+      .upload(filePath, buffer, {
+        contentType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError.message || uploadError);
+      return res.status(500).json({ error: uploadError.message || 'Storage upload failed.' });
+    }
+
+    const { data } = supabase.storage
+      .from('events')
+      .getPublicUrl(filePath);
+
+    res.json({ publicUrl: data?.publicUrl || null });
+  } catch (err) {
+    console.error('Unexpected upload endpoint error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Helper function untuk reset sequence (ID) ke 1
 const resetSequence = async (tableName, sequenceName) => {
@@ -180,7 +243,7 @@ app.get('/api/gallery', async (req, res) => {
 app.post('/api/gallery', async (req, res) => {
   const { title, image_url, category, description } = req.body;
   const { data, error } = await supabase.from('gallery')
-    .insert([{ title, image_url, category, description }])
+    .insert([{ title, image_url: image_url || '', category, description }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -191,7 +254,7 @@ app.put('/api/gallery/:id', async (req, res) => {
   const { id } = req.params;
   const { title, image_url, category, description } = req.body;
   const { data, error } = await supabase.from('gallery')
-    .update({ title, image_url, category, description })
+    .update({ title, image_url: image_url || '', category, description })
     .eq('id', id)
     .select()
     .single();
@@ -240,6 +303,27 @@ app.delete('/api/smartcheck/:id', async (req, res) => {
   const { error } = await supabase.from('smartcheck_questions').delete().eq('id', id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true, id });
+});
+
+// ============ SMART CHECK CATEGORIES ============
+app.put('/api/smartcheck/category/:oldName', async (req, res) => {
+  const { oldName } = req.params;
+  const { newName } = req.body;
+  const { data, error } = await supabase.from('smartcheck_questions')
+    .update({ category: newName })
+    .eq('category', oldName)
+    .select();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/smartcheck/category/:name', async (req, res) => {
+  const { name } = req.params;
+  const { error } = await supabase.from('smartcheck_questions')
+    .delete()
+    .eq('category', name);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, category: name });
 });
 
 // ============ RESET SEQUENCE (AUTO-INCREMENT ID) ============

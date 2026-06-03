@@ -8,7 +8,7 @@ import './Results.css';
 export default function Results() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { score, type } = location.state || { score: 0, type: 'unknown' };
+  const { score, type, numQuestions } = location.state || { score: 0, type: 'unknown', numQuestions: 3 };
 
   if (type === 'unknown') {
     return (
@@ -24,21 +24,24 @@ export default function Results() {
     );
   }
 
-  // Calculate risk
-  // max score is 9 (3 questions * max 3), min score is 3
+  // Calculate risk dynamically
+  const maxPossibleScore = (numQuestions || 3) * 3;
   let riskCategory = 'Low';
   let riskColor = 'var(--secondary)'; // teal
   let RiskIcon = ShieldCheck;
   
-  if (score >= 7) {
+  if (score >= maxPossibleScore * 0.75) {
     riskCategory = 'High';
     riskColor = '#dc2626'; // red
     RiskIcon = AlertTriangle;
-  } else if (score >= 5) {
+  } else if (score >= maxPossibleScore * 0.5) {
     riskCategory = 'Medium';
     riskColor = '#f59e0b'; // amber
     RiskIcon = Activity;
   }
+
+  // Format type nicely (Title Case)
+  const formattedType = type.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   return (
     <motion.div 
@@ -58,7 +61,7 @@ export default function Results() {
             transition={{ duration: 0.5 }}
           >
             <div className="results-header">
-              <h2>{type === 'obesity' ? 'Obesity Risk' : 'Cholesterol Risk'} Assessment</h2>
+              <h2>{formattedType} Risk Assessment</h2>
               <p>Based on your answers, here is your initial screening result.</p>
             </div>
 
@@ -72,7 +75,7 @@ export default function Results() {
               >
                 <RiskIcon size={48} className="mb-2" />
                 <div className="risk-level">{riskCategory} Risk</div>
-                <div className="score-number">Score: {score}/9</div>
+                <div className="score-number">Score: {score}/{maxPossibleScore}</div>
               </motion.div>
             </div>
 

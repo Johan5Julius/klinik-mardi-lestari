@@ -17,7 +17,7 @@ export default function Gallery() {
         const { data, error } = await supabase.from('gallery').select('*').order('id', { ascending: false });
         console.debug('Gallery fetch:', { rows: data?.length, error: error?.message });
         if (!mounted) return;
-        if (!error && data && data.length) {
+        if (!error && data) {
           setItems(data);
         }
       } catch (e) {
@@ -79,9 +79,11 @@ export default function Gallery() {
                     aria-label={`Lihat foto: ${item.title}`}
                     onKeyDown={(e) => e.key === 'Enter' && setLightbox(item)}
                   >
-                  <div className="gallery-placeholder">
-                    <span className="gallery-emoji">🏥</span>
-                  </div>
+                  {!imageSrc && (
+                    <div className="gallery-placeholder">
+                      <span className="gallery-emoji">🏥</span>
+                    </div>
+                  )}
                   <div className="gallery-overlay">
                     <ZoomIn size={24} />
                     <span>{item.title}</span>

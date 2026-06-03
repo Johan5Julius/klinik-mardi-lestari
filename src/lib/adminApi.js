@@ -266,6 +266,29 @@ export const adminApi = {
       }
       return res.json();
     },
+    async updateCategory(oldName, newName) {
+      const res = await fetch(`${API_BASE}/smartcheck/category/${encodeURIComponent(oldName)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newName }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update category');
+      }
+      return res.json();
+    },
+    async deleteCategory(name) {
+      const res = await fetch(`${API_BASE}/smartcheck/category/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete category');
+      }
+      return res.json();
+    },
   },
 
   // ============ UTILITIES ============

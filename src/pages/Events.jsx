@@ -43,7 +43,7 @@ export default function Events() {
 
         console.debug('Events fetch:', { rows: data?.length, error: error?.message });
         if (!mounted) return;
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           setEventsData(applyStoredEventImages(data));
         }
       } catch (err) {

@@ -198,6 +198,7 @@ const PANELS = {
     fields: [
       { key: 'title', label: 'Photo Title', type: 'text' },
       { key: 'category', label: 'Category', type: 'select', options: ['Facility', 'Activity'] },
+      { key: 'image', label: 'Photo', type: 'file' },
     ],
   },
   branding: {
@@ -294,22 +295,41 @@ export default function AdminDashboard() {
     showToast('Logo dikembalikan ke default.');
   };
 
-  // Upload a file to Supabase Storage under the 'events' bucket.
-  const uploadToStorage = async (file) => {
+  // Upload a file to Supabase Storage under the existing 'events' bucket.
+  // When saving gallery photos, use a subfolder path inside the same bucket.
+  const uploadToStorage = async (file, folder = 'events') => {
     if (!file) return null;
     try {
-      const filePath = `events/${Date.now()}_${file.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('events')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) {
-        console.warn('Upload error:', uploadError.message || uploadError);
-        return null;
-      }
-
-      const { publicURL } = supabase.storage.from('events').getPublicUrl(filePath);
-      return publicURL || null;
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result;
+          try {
+            const res = await fetch('http://localhost:4000/api/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                file: base64,
+                name: file.name,
+                folder
+              })
+            });
+            if (!res.ok) {
+              const err = await res.json();
+              console.warn('Backend upload error:', err.error);
+              resolve(null);
+              return;
+            }
+            const data = await res.json();
+            resolve(data.publicUrl || null);
+          } catch (e) {
+            console.warn('Backend upload fetch error:', e);
+            resolve(null);
+          }
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
     } catch (e) {
       console.warn('Unexpected upload error:', e.message || e);
       return null;
@@ -406,7 +426,13 @@ export default function AdminDashboard() {
   };
 
   const handleEdit = (row) => {
-    setFormData({ ...row });
+    const initialData = { ...row };
+    if (activePanel === 'events' || activePanel === 'gallery') {
+      if (initialData.image_url) {
+        initialData.image = initialData.image || initialData.image_url;
+      }
+    }
+    setFormData(initialData);
     setModal({ type: 'edit' });
   };
 
@@ -497,12 +523,21 @@ export default function AdminDashboard() {
           showToast('Schedule updated successfully.');
         }
       } else if (activePanel === 'events') {
-        const payload = { title: formData.title, description: formData.description, date: formData.date, category: formData.category, status: formData.status, location: formData.location, image_url: formData.image_url };
+        const existingEventUrl = typeof formData.image === 'string' && !formData.image.startsWith('data:') ? formData.image : formData.image_url;
+      const payload = {
+        title: formData.title,
+        description: formData.description,
+        date: formData.date,
+        category: formData.category,
+        status: formData.status,
+        location: formData.location,
+        image_url: existingEventUrl || null,
+      };
 
         // Upload image if available
         const file = formData.imageFile || (formData.image instanceof File ? formData.image : null);
         if (file) {
-          const url = await uploadToStorage(file);
+          const url = await uploadToStorage(file, 'events');
           if (url) payload.image_url = url;
         }
 
@@ -518,7 +553,19 @@ export default function AdminDashboard() {
           showToast('Event updated successfully.');
         }
       } else if (activePanel === 'gallery') {
-        const payload = { title: formData.title, category: formData.category, image_url: formData.image_url || formData.image || null, description: formData.description };
+        const existingUrl = typeof formData.image === 'string' && !formData.image.startsWith('data:') ? formData.image : formData.image_url;
+        const payload = {
+          title: formData.title,
+          category: formData.category,
+          image_url: existingUrl || '',
+          description: formData.description || '',
+        };
+        const file = formData.imageFile || (formData.image instanceof File ? formData.image : null);
+        if (file) {
+          const url = await uploadToStorage(file, 'gallery');
+          if (url) payload.image_url = url;
+        }
+
         if (modal.type === 'add') {
           const insertData = await adminApi.gallery.create(payload);
           setRows(prev => ({ ...prev, gallery: [...prev.gallery, insertData] }));
@@ -666,6 +713,12 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+            ) : activePanel === 'smartcheck' ? (
+              <SmartCheckAccordionPanel
+                rows={rows.smartcheck}
+                setRows={setRows}
+                showToast={showToast}
+              />
             ) : (
               <DataTable
                 columns={panel.columns}
@@ -755,6 +808,351 @@ export default function AdminDashboard() {
       {/* Toast */}
       <AnimatePresence>
         {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── SmartCheck Accordion Panel ─────────────────────────────────────────────
+function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
+  const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [emptyCategories, setEmptyCategories] = useState([]);
+  
+  // localModal: { type: 'add_cat'|'edit_cat'|'add_q'|'edit_q' }
+  const [localModal, setLocalModal] = useState(null);
+  const [categoryInput, setCategoryInput] = useState('');
+  const [questionInput, setQuestionInput] = useState('');
+  
+  const [targetCategory, setTargetCategory] = useState('');
+  const [targetQuestion, setTargetQuestion] = useState(null);
+
+  // Group database questions by category
+  const categoriesMap = {};
+  rows.forEach(q => {
+    const cat = q.category || 'General';
+    if (!categoriesMap[cat]) {
+      categoriesMap[cat] = [];
+    }
+    categoriesMap[cat].push(q);
+  });
+
+  // Combine with empty categories to list all
+  const allCategories = Array.from(new Set([
+    ...Object.keys(categoriesMap),
+    ...emptyCategories
+  ])).sort((a, b) => a.localeCompare(b));
+
+  const toggleCategory = (cat) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) {
+        next.delete(cat);
+      } else {
+        next.add(cat);
+      }
+      return next;
+    });
+  };
+
+  const handleOpenAddCategory = () => {
+    setCategoryInput('');
+    setLocalModal({ type: 'add_cat' });
+  };
+
+  const handleAddCategorySubmit = () => {
+    const name = categoryInput.trim();
+    if (!name) return;
+    if (allCategories.some(c => c.toLowerCase() === name.toLowerCase())) {
+      showToast('Category already exists.');
+      return;
+    }
+    setEmptyCategories(prev => [...prev, name]);
+    setExpandedCategories(prev => new Set(prev).add(name));
+    setCategoryInput('');
+    setLocalModal(null);
+    showToast(`Category "${name}" created.`);
+  };
+
+  const handleOpenEditCategory = (cat) => {
+    setTargetCategory(cat);
+    setCategoryInput(cat);
+    setLocalModal({ type: 'edit_cat' });
+  };
+
+  const handleRenameCategorySubmit = async () => {
+    const oldName = targetCategory;
+    const newName = categoryInput.trim();
+    if (!newName || oldName === newName) {
+      setLocalModal(null);
+      return;
+    }
+    if (allCategories.some(c => c.toLowerCase() === newName.toLowerCase() && c !== oldName)) {
+      showToast('Category name already exists.');
+      return;
+    }
+
+    try {
+      // Renames the category for all rows in DB matching oldName
+      await adminApi.smartcheck.updateCategory(oldName, newName);
+      
+      // Update local parent rows state
+      setRows(prev => ({
+        ...prev,
+        smartcheck: prev.smartcheck.map(q => q.category === oldName ? { ...q, category: newName } : q)
+      }));
+
+      // Update empty categories list if it was empty
+      setEmptyCategories(prev => prev.map(c => c === oldName ? newName : c));
+
+      // Update expanded set
+      setExpandedCategories(prev => {
+        const next = new Set(prev);
+        if (next.has(oldName)) {
+          next.delete(oldName);
+          next.add(newName);
+        }
+        return next;
+      });
+
+      setLocalModal(null);
+      showToast(`Category renamed to "${newName}".`);
+    } catch (err) {
+      console.error(err);
+      showToast('Error renaming category: ' + (err.message || err));
+    }
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    if (!window.confirm(`Are you sure you want to delete category "${cat}" and all its questions?`)) return;
+    try {
+      await adminApi.smartcheck.deleteCategory(cat);
+      
+      // Update parent rows
+      setRows(prev => ({
+        ...prev,
+        smartcheck: prev.smartcheck.filter(q => q.category !== cat)
+      }));
+
+      // Update local empty categories list
+      setEmptyCategories(prev => prev.filter(c => c !== cat));
+
+      // Update expanded set
+      setExpandedCategories(prev => {
+        const next = new Set(prev);
+        next.delete(cat);
+        return next;
+      });
+
+      showToast(`Category "${cat}" and its questions deleted.`);
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting category: ' + (err.message || err));
+    }
+  };
+
+  const handleOpenAddQuestion = (cat) => {
+    setTargetCategory(cat);
+    setQuestionInput('');
+    setLocalModal({ type: 'add_q' });
+  };
+
+  const handleAddQuestionSubmit = async () => {
+    const text = questionInput.trim();
+    if (!text) return;
+    try {
+      const newQ = await adminApi.smartcheck.create({
+        question_text: text,
+        category: targetCategory
+      });
+
+      // Update parent state
+      setRows(prev => ({
+        ...prev,
+        smartcheck: [...prev.smartcheck, newQ]
+      }));
+
+      // Remove from empty categories if it has a question now
+      setEmptyCategories(prev => prev.filter(c => c !== targetCategory));
+
+      setLocalModal(null);
+      showToast('Question added successfully.');
+    } catch (err) {
+      console.error(err);
+      showToast('Error adding question: ' + (err.message || err));
+    }
+  };
+
+  const handleOpenEditQuestion = (q) => {
+    setTargetQuestion(q);
+    setQuestionInput(q.question_text || q.title || '');
+    setLocalModal({ type: 'edit_q' });
+  };
+
+  const handleEditQuestionSubmit = async () => {
+    const text = questionInput.trim();
+    if (!text || !targetQuestion) return;
+    try {
+      const updatedQ = await adminApi.smartcheck.update(targetQuestion.id, {
+        question_text: text,
+        category: targetQuestion.category
+      });
+
+      // Update parent state
+      setRows(prev => ({
+        ...prev,
+        smartcheck: prev.smartcheck.map(q => q.id === updatedQ.id ? updatedQ : q)
+      }));
+
+      setLocalModal(null);
+      showToast('Question updated successfully.');
+    } catch (err) {
+      console.error(err);
+      showToast('Error updating question: ' + (err.message || err));
+    }
+  };
+
+  const handleDeleteQuestion = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this question?')) return;
+    try {
+      await adminApi.smartcheck.delete(id);
+      
+      // Update parent state
+      setRows(prev => ({
+        ...prev,
+        smartcheck: prev.smartcheck.filter(q => q.id !== id)
+      }));
+
+      showToast('Question deleted successfully.');
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting question: ' + (err.message || err));
+    }
+  };
+
+  return (
+    <div className="smartcheck-accordion-panel">
+      <div className="admin-table-header" style={{ marginBottom: '1.5rem', padding: 0, borderBottom: 0 }}>
+        <button className="admin-action-btn btn-add" onClick={handleOpenAddCategory}>
+          <Plus size={15} /> Add Category
+        </button>
+      </div>
+
+      <div className="accordion-list">
+        {allCategories.map(cat => {
+          const questions = categoriesMap[cat] || [];
+          const isExpanded = expandedCategories.has(cat);
+
+          return (
+            <div key={cat} className="accordion-item glass-panel">
+              <div className="accordion-header" onClick={() => toggleCategory(cat)}>
+                <div className="accordion-header-left">
+                  <ChevronRight size={18} className={`accordion-arrow ${isExpanded ? 'rotated' : ''}`} />
+                  <span className="category-title">{cat}</span>
+                  <span className="question-count">({questions.length} questions)</span>
+                </div>
+                <div className="category-actions" onClick={e => e.stopPropagation()}>
+                  <button className="icon-btn edit-btn" onClick={() => handleOpenEditCategory(cat)} title="Rename Category"><Pencil size={14} /></button>
+                  <button className="icon-btn del-btn" onClick={() => handleDeleteCategory(cat)} title="Delete Category"><Trash2 size={14} /></button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="accordion-content">
+                  {questions.length === 0 ? (
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1rem', fontStyle: 'italic' }}>
+                      No questions in this category yet.
+                    </p>
+                  ) : (
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '80px' }}>ID</th>
+                            <th>Question Text</th>
+                            <th style={{ width: '120px', textAlign: 'center' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {questions.map((q, idx) => (
+                            <tr key={q.id || idx}>
+                              <td>{q.id}</td>
+                              <td>{q.question_text || q.title}</td>
+                              <td className="action-cell" style={{ justifyContent: 'center' }}>
+                                <button className="icon-btn edit-btn" onClick={() => handleOpenEditQuestion(q)} aria-label="Edit question"><Pencil size={14} /></button>
+                                <button className="icon-btn del-btn" onClick={() => handleDeleteQuestion(q.id)} aria-label="Delete question"><Trash2 size={14} /></button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <button className="btn-add-q" onClick={() => handleOpenAddQuestion(cat)}>
+                    <Plus size={14} /> Add Question to {cat}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modals for SmartCheck Accordion */}
+      <AnimatePresence>
+        {localModal && (
+          <Modal
+            title={
+              localModal.type === 'add_cat' ? 'Add Category' :
+              localModal.type === 'edit_cat' ? 'Rename Category' :
+              localModal.type === 'add_q' ? `Add Question to "${targetCategory}"` :
+              'Edit Question'
+            }
+            onClose={() => setLocalModal(null)}
+          >
+            <div className="modal-form">
+              {(localModal.type === 'add_cat' || localModal.type === 'edit_cat') ? (
+                <div className="modal-field">
+                  <label htmlFor="cat-name-input">Category Name</label>
+                  <input
+                    id="cat-name-input"
+                    type="text"
+                    value={categoryInput}
+                    onChange={e => setCategoryInput(e.target.value)}
+                    placeholder="e.g. Hypertension Risk..."
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div className="modal-field">
+                  <label htmlFor="quest-text-input">Question Text</label>
+                  <textarea
+                    id="quest-text-input"
+                    value={questionInput}
+                    onChange={e => setQuestionInput(e.target.value)}
+                    placeholder="e.g. How often do you check your blood pressure?"
+                    rows={4}
+                    autoFocus
+                  />
+                </div>
+              )}
+              <div className="modal-actions">
+                <button className="modal-cancel" onClick={() => setLocalModal(null)}>Cancel</button>
+                <button
+                  className="modal-save"
+                  onClick={
+                    localModal.type === 'add_cat' ? handleAddCategorySubmit :
+                    localModal.type === 'edit_cat' ? handleRenameCategorySubmit :
+                    localModal.type === 'add_q' ? handleAddQuestionSubmit :
+                    handleEditQuestionSubmit
+                  }
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
       </AnimatePresence>
     </div>
   );
