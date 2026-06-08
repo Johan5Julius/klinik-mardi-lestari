@@ -5,12 +5,12 @@ import { ArrowLeft, ArrowRight, HeartPulse, Scale, Info, HelpCircle, Activity } 
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import './SmartCheck.css';
-import { supabase } from '../lib/supabaseClient';
+import { adminApi } from '../lib/adminApi';
 
 const defaultOptions = ['Low', 'Medium', 'High'];
 const defaultValues = [1, 2, 3];
 
-// questions loaded from DB grouped by category
+// questions loaded from admin Smart Check data grouped by category
 // shape: { categoryKey: [ { id, text, options, values } ] }
 const useQuestionsFromDb = () => {
   const [q, setQ] = useState(null);
@@ -18,18 +18,21 @@ const useQuestionsFromDb = () => {
     let mounted = true;
     async function loadQs() {
       try {
-        // try both table names
-        let res = await supabase.from('smartcheck').select('*');
-        if (res.error || !res.data || res.data.length === 0) {
-          res = await supabase.from('smartcheck_questions').select('*');
-        }
+        const data = await adminApi.smartcheck.getAll();
         if (!mounted) return;
-        if (!res.error && res.data) {
+        if (data && Array.isArray(data)) {
           const grouped = {};
-          res.data.forEach(item => {
+          data.forEach(item => {
             const cat = item.category || 'General';
             if (!grouped[cat]) grouped[cat] = [];
-            grouped[cat].push({ id: item.id, text: item.question_text || item.title || item.text || 'Question', options: defaultOptions, values: defaultValues });
+            const options = Array.isArray(item.options) && item.options.length
+              ? item.options
+              : defaultOptions.map((label, idx) => ({ label, value: defaultValues[idx] || 0 }));
+            grouped[cat].push({
+              id: item.id,
+              text: item.question_text || item.title || item.text || 'Question',
+              options,
+            });
           });
           setQ(grouped);
         }
@@ -59,17 +62,7 @@ export default function SmartCheck() {
     }
     
     // fallback small set to keep UI working
-    const lower = t.toLowerCase();
-    if (lower === 'obesity' || lower === 'obesitas') return [
-      { id: 1, text: 'How often do you exercise per week?', options: ['Never', '1–2', '3+'], values: [3,2,1] },
-      { id: 2, text: 'How often do you consume fast food?', options: ['Daily','Sometimes','Rarely'], values: [3,2,1] },
-      { id: 3, text: 'Do you feel overweight?', options: ['Yes','Somewhat','No'], values: [3,2,1] }
-    ];
-    if (lower === 'cholesterol' || lower === 'kolesterol') return [
-      { id: 1, text: 'Family history of high cholesterol?', options: ['Yes','Not sure','No'], values: [3,2,1] },
-      { id: 2, text: 'How often do you eat fried foods?', options: ['Daily','Sometimes','Rarely'], values: [3,2,1] },
-      { id: 3, text: 'Do you smoke?', options: ['Yes','Occasionally','No'], values: [3,2,1] }
-    ];
+    
     return [];
   };
 
@@ -90,9 +83,14 @@ export default function SmartCheck() {
     if (currentQIndex < qs.length - 1) {
       setCurrentQIndex(prev => prev + 1);
     } else {
-      // finish
       const finalScore = score + value;
-      navigate('/results', { state: { score: finalScore, type, numQuestions: qs.length } });
+      const maxPossibleScore = qs.reduce((sum, q) => {
+        const maxValue = Array.isArray(q.options) && q.options.length > 0
+          ? Math.max(...q.options.map(o => Number(o.value) || 0))
+          : 3;
+        return sum + maxValue;
+      }, 0);
+      navigate('/results', { state: { score: finalScore, type, numQuestions: qs.length, maxPossibleScore } });
     }
   };
 
@@ -129,7 +127,7 @@ export default function SmartCheck() {
                         if (questionsFromDb && Object.keys(questionsFromDb).length > 0) {
                           return Object.keys(questionsFromDb);
                         }
-                        return ['Obesity', 'Cholesterol'];
+                        return [];
                       };
                       return getCategories().map((catName, idx) => {
                         const lower = catName.toLowerCase();
@@ -220,9 +218,9 @@ export default function SmartCheck() {
                         <button 
                           key={idx} 
                           className="option-btn"
-                          onClick={() => handleAnswer(getQuestionsForType(type)[currentQIndex].values[idx])}
+                          onClick={() => handleAnswer(opt.value)}
                         >
-                          {opt}
+                          {opt.label}
                         </button>
                       ))}
                     </div>

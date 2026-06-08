@@ -238,6 +238,27 @@ export const adminApi = {
     },
   },
 
+  // ============ SMART CHECK CATEGORIES ============
+  smartcheckCategories: {
+    async getAll() {
+      const res = await fetch(`${API_BASE}/smartcheck/categories`);
+      if (!res.ok) throw new Error('Failed to fetch smartcheck categories');
+      return res.json();
+    },
+    async update(id, data) {
+      const res = await fetch(`${API_BASE}/smartcheck/categories/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errMsg = await parseApiError(res);
+        throw new Error(errMsg || 'Failed to update smartcheck category');
+      }
+      return res.json();
+    },
+  },
+
   // ============ SMART CHECK ============
   smartcheck: {
     async getAll() {

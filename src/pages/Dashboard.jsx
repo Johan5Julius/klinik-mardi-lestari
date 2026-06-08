@@ -7,6 +7,7 @@ import Footer from '../components/Footer';
 import FacilitiesSlider from '../components/FacilitiesSlider';
 import Videos from '../components/Videos';
 import { supabase } from '../lib/supabaseClient';
+import { fetchFacilities } from '../lib/publicApi';
 import './Dashboard.css';
 
 const fadeUp = (delay = 0) => ({
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const [schedulesData, setSchedulesData] = useState([]);
   const [eventsData, setEventsData] = useState([]);
   const [galleryData, setGalleryData] = useState([]);
+  const [facilitiesData, setFacilitiesData] = useState([]);
   const previewCount = 2;
 
   useEffect(() => {
@@ -82,12 +84,13 @@ export default function Dashboard() {
     let mounted = true;
     async function fetchAll() {
       try {
-        const [doctorsRes, schedulesRes, eventsRes, galleryRes, profileRes] = await Promise.all([
+        const [doctorsRes, schedulesRes, eventsRes, galleryRes, profileRes, facilitiesRes] = await Promise.all([
           supabase.from('doctors').select('*'),
           supabase.from('schedules').select('*'),
           supabase.from('events').select('*').order('date', { ascending: true }),
           supabase.from('gallery').select('*').order('id', { ascending: false }),
           supabase.from('clinic_profile').select('*').single(),
+          supabase.from('facilities').select('*').order('id', { ascending: true }),
         ]);
 
         if (!mounted) return;
@@ -101,11 +104,19 @@ export default function Dashboard() {
           galleryRows: galleryRes.data?.length,
           galleryError: galleryRes.error?.message,
           profileError: profileRes.error?.message,
+          facilitiesRows: facilitiesRes.data?.length,
+          facilitiesError: facilitiesRes.error?.message,
         });
         if (!doctorsRes.error && doctorsRes.data) setDoctorsData(doctorsRes.data);
         if (!schedulesRes.error && schedulesRes.data) setSchedulesData(schedulesRes.data);
         if (!eventsRes.error && eventsRes.data) setEventsData(eventsRes.data);
         if (!galleryRes.error && galleryRes.data) setGalleryData(galleryRes.data);
+        if (!facilitiesRes.error && facilitiesRes.data?.length) {
+          setFacilitiesData(facilitiesRes.data);
+        } else {
+          const apiFacilities = await fetchFacilities();
+          if (apiFacilities?.length) setFacilitiesData(apiFacilities);
+        }
         if (!profileRes.error && profileRes.data) {
           setClinicProfile(prev => ({ ...prev, ...profileRes.data }));
         } else if (profileRes.error) {
@@ -183,7 +194,7 @@ export default function Dashboard() {
                 <div className="schedule-panel-body">
                   <div className="schedule-list">
                     {/* ini nanti di ganti yang ada di supabase */}
-                    {doctorsData.slice(0, 3).map((doc) => (
+                    {doctorsData.slice(0, 5).map((doc) => (
                       <div key={doc.id} className="schedule-item">
                         <div className="schedule-avatar" aria-hidden="true">
                           {doc.name?.split(' ').pop()?.[0] || '?'}
@@ -294,7 +305,7 @@ export default function Dashboard() {
             <motion.h2 className="section-large-title text-white drop-shadow mb-4" {...fadeUp(0)}>
               Our Facilities
             </motion.h2>
-            <FacilitiesSlider />
+            <FacilitiesSlider facilities={facilitiesData} />
           </div>
         </section>
 

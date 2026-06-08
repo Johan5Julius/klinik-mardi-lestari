@@ -8,7 +8,7 @@ import './Results.css';
 export default function Results() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { score, type, numQuestions } = location.state || { score: 0, type: 'unknown', numQuestions: 3 };
+  const { score, type, numQuestions, maxPossibleScore: stateMaxPossibleScore } = location.state || { score: 0, type: 'unknown', numQuestions: 3 };
 
   if (type === 'unknown') {
     return (
@@ -25,16 +25,17 @@ export default function Results() {
   }
 
   // Calculate risk dynamically
-  const maxPossibleScore = (numQuestions || 3) * 3;
+  const maxPossibleScore = stateMaxPossibleScore || (numQuestions || 3) * 3;
+  const percentage = maxPossibleScore > 0 ? Math.round((score / maxPossibleScore) * 100) : 0;
   let riskCategory = 'Low';
   let riskColor = 'var(--secondary)'; // teal
   let RiskIcon = ShieldCheck;
   
-  if (score >= maxPossibleScore * 0.75) {
+  if (percentage >= 70) {
     riskCategory = 'High';
     riskColor = '#dc2626'; // red
     RiskIcon = AlertTriangle;
-  } else if (score >= maxPossibleScore * 0.5) {
+  } else if (percentage >= 40) {
     riskCategory = 'Medium';
     riskColor = '#f59e0b'; // amber
     RiskIcon = Activity;
@@ -75,7 +76,7 @@ export default function Results() {
               >
                 <RiskIcon size={48} className="mb-2" />
                 <div className="risk-level">{riskCategory} Risk</div>
-                <div className="score-number">Score: {score}/{maxPossibleScore}</div>
+                <div className="score-number">Score: {score}/{maxPossibleScore} ({percentage}%)</div>
               </motion.div>
             </div>
 

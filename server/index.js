@@ -28,6 +28,69 @@ const ensureBucketExists = async (bucketName) => {
   }
 };
 
+async function findFacilityBySlug(slug) {
+  const { data: facility } = await supabase
+    .from('facilities')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle();
+
+  if (facility) return facility;
+
+  const { data: all } = await supabase.from('facilities').select('*');
+  return (all || []).find(f => f.slug?.toLowerCase() === String(slug).toLowerCase()) || null;
+}
+
+async function getDoctorsWithSchedulesForFacility(facilityId) {
+  const { data: facilitySchedules, error: schedError } = await supabase
+    .from('schedules')
+    .select('*')
+    .eq('facility_id', facilityId);
+
+  if (schedError) throw schedError;
+
+  const scheduleDoctorIds = [...new Set((facilitySchedules || []).map(s => s.doctor_id))];
+
+  let directDoctorIds = [];
+  const { data: directDoctors, error: directError } = await supabase
+    .from('doctors')
+    .select('*')
+    .eq('facility_id', facilityId);
+
+  if (!directError) {
+    directDoctorIds = (directDoctors || []).map(d => d.id);
+  } else if (!directError.message?.includes('facility_id')) {
+    throw directError;
+  }
+
+  const allDoctorIds = [...new Set([...scheduleDoctorIds, ...directDoctorIds])];
+  if (!allDoctorIds.length) return [];
+
+  const { data: doctors, error: doctorsError } = await supabase
+    .from('doctors')
+    .select('*')
+    .in('id', allDoctorIds)
+    .order('name', { ascending: true });
+
+  if (doctorsError) throw doctorsError;
+
+  const { data: allSchedules, error: allSchedError } = await supabase
+    .from('schedules')
+    .select('*')
+    .in('doctor_id', allDoctorIds);
+
+  if (allSchedError) throw allSchedError;
+
+  const relevantSchedules = (allSchedules || []).filter(
+    s => s.facility_id === facilityId || s.facility_id == null
+  );
+
+  return (doctors || []).map(doc => ({
+    ...doc,
+    schedules: relevantSchedules.filter(s => s.doctor_id === doc.id),
+  }));
+}
+
 // ============ FILE UPLOAD (BYPASS RLS VIA SERVICE KEY) ============
 app.post('/api/upload', async (req, res) => {
   const { file, name, folder } = req.body;
@@ -97,9 +160,9 @@ app.get('/api/doctors', async (req, res) => {
 });
 
 app.post('/api/doctors', async (req, res) => {
-  const { name, specialization, phone, status } = req.body;
+  const { name, specialization, phone, status, facility_id } = req.body;
   const { data, error } = await supabase.from('doctors')
-    .insert([{ name, specialization, phone, status }])
+    .insert([{ name, specialization, phone, status, facility_id: facility_id || null }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -108,9 +171,9 @@ app.post('/api/doctors', async (req, res) => {
 
 app.put('/api/doctors/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, specialization, phone, status } = req.body;
+  const { name, specialization, phone, status, facility_id } = req.body;
   const { data, error } = await supabase.from('doctors')
-    .update({ name, specialization, phone, status })
+    .update({ name, specialization, phone, status, facility_id: facility_id || null })
     .eq('id', id)
     .select()
     .single();
@@ -169,9 +232,9 @@ app.get('/api/facilities', async (req, res) => {
 });
 
 app.post('/api/facilities', async (req, res) => {
-  const { slug, name, description, color, motto, icon } = req.body;
+  const { slug, name, description, color, motto, icon, background_image_url } = req.body;
   const { data, error } = await supabase.from('facilities')
-    .insert([{ slug, name, description, color, motto, icon }])
+    .insert([{ slug, name, description, color, motto, icon, background_image_url }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -180,14 +243,30 @@ app.post('/api/facilities', async (req, res) => {
 
 app.put('/api/facilities/:id', async (req, res) => {
   const { id } = req.params;
-  const { slug, name, description, color, motto, icon } = req.body;
+  const { slug, name, description, color, motto, icon, background_image_url } = req.body;
   const { data, error } = await supabase.from('facilities')
-    .update({ slug, name, description, color, motto, icon })
+    .update({ slug, name, description, color, motto, icon, background_image_url })
     .eq('id', id)
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+app.get('/api/facilities/slug/:slug', async (req, res) => {
+  const { slug } = req.params;
+
+  const facility = await findFacilityBySlug(slug);
+  if (!facility) return res.status(404).json({ error: 'Facility not found' });
+
+  let doctorsWithSchedules;
+  try {
+    doctorsWithSchedules = await getDoctorsWithSchedulesForFacility(facility.id);
+  } catch (doctorsError) {
+    return res.status(500).json({ error: doctorsError.message });
+  }
+
+  res.json({ facility, doctors: doctorsWithSchedules });
 });
 
 app.delete('/api/facilities/:id', async (req, res) => {
@@ -305,6 +384,25 @@ app.delete('/api/gallery/:id', async (req, res) => {
   res.json({ success: true, id });
 });
 
+// ============ SMART CHECK CATEGORIES ============
+app.get('/api/smartcheck/categories', async (req, res) => {
+  const { data, error } = await supabase.from('smartcheck_categories').select('*').order('name', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.put('/api/smartcheck/categories/:id', async (req, res) => {
+  const { id } = req.params;
+  const { low_threshold, medium_threshold, description } = req.body;
+  const { data, error } = await supabase.from('smartcheck_categories')
+    .update({ low_threshold, medium_threshold, description })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // ============ SMART CHECK ============
 app.get('/api/smartcheck', async (req, res) => {
   const { data, error } = await supabase.from('smartcheck_questions').select('*');
@@ -313,9 +411,9 @@ app.get('/api/smartcheck', async (req, res) => {
 });
 
 app.post('/api/smartcheck', async (req, res) => {
-  const { question_text, category } = req.body;
+  const { question_text, category, options } = req.body;
   const { data, error } = await supabase.from('smartcheck_questions')
-    .insert([{ question_text, category }])
+    .insert([{ question_text, category, options: options || [] }])
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -324,9 +422,9 @@ app.post('/api/smartcheck', async (req, res) => {
 
 app.put('/api/smartcheck/:id', async (req, res) => {
   const { id } = req.params;
-  const { question_text, category } = req.body;
+  const { question_text, category, options } = req.body;
   const { data, error } = await supabase.from('smartcheck_questions')
-    .update({ question_text, category })
+    .update({ question_text, category, options: options || [] })
     .eq('id', id)
     .select()
     .single();

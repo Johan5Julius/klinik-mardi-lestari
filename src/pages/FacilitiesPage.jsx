@@ -1,169 +1,282 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
-import { ArrowLeft, Stethoscope, Heart, Activity, ShieldPlus, Home } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Clock, Calendar } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { supabase } from '../lib/supabaseClient';
+import { fetchFacilities, fetchFacilityDetail } from '../lib/publicApi';
+import { getFacilityIcon } from '../lib/facilityIcons';
 import './FacilitiesPage.css';
 
-const facilitiesData = {
-  outpatient: {
-    name: 'Outpatient Services',
-    icon: <Stethoscope size={64} />,
-    color: '#0284c7',
-    motto: 'Expert care, without the overnight stay.',
-    bgImage: "url('/assets/images/bgd4.jpg') center/cover no-repeat",
-    professionals: [
-      { id: 1, name: 'Dr. Sarah Lee', role: 'General Physician', bio: '10+ years experience in general medicine.' },
-      { id: 2, name: 'Dr. Michael Chen', role: 'Internal Medicine', bio: 'Specialist in adult diseases and chronic care.' }
-    ]
-  },
-  inpatient: {
-    name: 'Inpatient Services',
-    icon: <Heart size={64} />,
-    color: '#0d9488',
-    motto: 'Comfort and healing, round the clock.',
-    bgImage: "url('/assets/images/bgd4.jpeg') center/cover no-repeat",
-    professionals: [
-      { id: 3, name: 'Dr. Emily Wong', role: 'Chief Resident', bio: 'Overseeing patient recovery and daily rounds.' },
-      { id: 4, name: 'Nurse Clara', role: 'Head Nurse', bio: 'Ensuring top-notch patient care and comfort.' }
-    ]
-  },
-  ambulance: {
-    name: '24-Hour Ambulance',
-    icon: <Activity size={64} />,
-    color: '#dc2626',
-    motto: 'Rapid response when every second counts.',
-    bgImage: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-    professionals: [
-      { id: 5, name: 'Paramedic John', role: 'Lead Paramedic', bio: 'Trained for high-stress emergency situations.' }
-    ]
-  },
-  ekg: {
-    name: 'EKG Services',
-    icon: <ShieldPlus size={64} />,
-    color: '#f59e0b',
-    motto: 'Precision diagnostics for your heart health.',
-    bgImage: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-    professionals: [
-      { id: 6, name: 'Dr. Alan Smith', role: 'Cardiologist', bio: 'Expert in heart rhythm diagnostics.' }
-    ]
-  },
-  homecare: {
-    name: 'Homecare Services',
-    icon: <Home size={64} />,
-    color: '#6366f1',
-    motto: 'Bringing quality healthcare to your doorstep.',
-    bgImage: 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)',
-    professionals: [
-      { id: 7, name: 'Nurse Ratna', role: 'Homecare Specialist', bio: 'Compassionate care in the comfort of your home.' }
-    ]
-  }
-};
-
-function ProfileCard({ prof, color }) {
-  const [isHovered, setIsHovered] = useState(false);
+function DoctorCard({ doctor, color }) {
+  const isActive = doctor.status === 'Active';
+  const statusClass = String(doctor.status || 'Active').toLowerCase().replace(' ', '-');
 
   return (
-    <div 
-      className="profile-container"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={() => setIsHovered(!isHovered)}
-    >
-      <div className="profile-basic glass-panel">
-        <div className="profile-avatar" style={{ backgroundColor: `${color}30`, color: color }}>
-          {prof.name.charAt(0)}
-        </div>
-        <h4>{prof.name}</h4>
-        <p>{prof.role}</p>
+    <div className="facility-doctor-card glass-panel">
+      <div className="facility-doctor-avatar" style={{ backgroundColor: `${color}25`, color }}>
+        {doctor.name?.charAt(0) || '?'}
       </div>
+      <div className="facility-doctor-info">
+        <h4>{doctor.name}</h4>
+        <p className="facility-doctor-spec">{doctor.specialization}</p>
 
-      <AnimatePresence>
-        {isHovered && (
-          <motion.div 
-            className="profile-animated-card"
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            style={{ borderTop: `4px solid ${color}` }}
-          >
-            <h4>{prof.name}</h4>
-            <span className="badge" style={{ backgroundColor: `${color}20`, color: color }}>{prof.role}</span>
-            <p className="bio">{prof.bio}</p>
-          </motion.div>
+        {isActive ? (
+          doctor.schedules?.length > 0 ? (
+            <ul className="facility-doctor-schedules">
+              {doctor.schedules.map(s => (
+                <li key={s.id}>
+                  <Calendar size={14} aria-hidden="true" />
+                  <span>{s.day}</span>
+                  <Clock size={14} aria-hidden="true" />
+                  <span>{s.time_slot}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="facility-doctor-no-schedule">Jadwal belum tersedia</p>
+          )
+        ) : (
+          <span className={`facility-doctor-status status-${statusClass}`}>
+            {doctor.status}
+          </span>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
 
 export default function FacilitiesPage() {
-  const { id } = useParams();
+  const { id: slug } = useParams();
   const navigate = useNavigate();
-  const facility = facilitiesData[id];
+  const [facility, setFacility] = useState(null);
+  const [doctors, setDoctors] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  if (!facility) return <div>Facility not found</div>;
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadFromSupabase() {
+      let fac = null;
+
+      const { data: exactMatch } = await supabase
+        .from('facilities')
+        .select('*')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (exactMatch) {
+        fac = exactMatch;
+      } else {
+        const { data: allFacilities } = await supabase.from('facilities').select('*');
+        fac = (allFacilities || []).find(
+          f => f.slug?.toLowerCase() === String(slug).toLowerCase()
+        ) || null;
+      }
+
+      if (!fac) return null;
+
+      const { data: facilitySchedules } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('facility_id', fac.id);
+
+      const scheduleDoctorIds = [...new Set((facilitySchedules || []).map(s => s.doctor_id))];
+
+      let directDoctorIds = [];
+      const { data: directDoctors, error: docErr } = await supabase
+        .from('doctors')
+        .select('*')
+        .eq('facility_id', fac.id);
+
+      if (!docErr) {
+        directDoctorIds = (directDoctors || []).map(d => d.id);
+      }
+
+      const allDoctorIds = [...new Set([...scheduleDoctorIds, ...directDoctorIds])];
+      if (!allDoctorIds.length) {
+        return { facility: fac, doctors: [] };
+      }
+
+      const { data: docRows } = await supabase
+        .from('doctors')
+        .select('*')
+        .in('id', allDoctorIds)
+        .order('name', { ascending: true });
+
+      const { data: schedRows } = await supabase
+        .from('schedules')
+        .select('*')
+        .in('doctor_id', allDoctorIds);
+
+      const schedules = (schedRows || []).filter(
+        s => s.facility_id === fac.id || s.facility_id == null
+      );
+
+      return {
+        facility: fac,
+        doctors: (docRows || []).map(doc => ({
+          ...doc,
+          schedules: schedules.filter(s => s.doctor_id === doc.id),
+        })),
+      };
+    }
+
+    async function loadFacility() {
+      setLoading(true);
+      try {
+        let result = await loadFromSupabase();
+
+        if (!result) {
+          result = await fetchFacilityDetail(slug);
+        }
+
+        if (!result) {
+          const allFacilities = await fetchFacilities();
+          const matched = (allFacilities || []).find(
+            f => f.slug === slug || f.slug?.toLowerCase() === String(slug).toLowerCase()
+          );
+          if (matched) {
+            result = { facility: matched, doctors: [] };
+          }
+        }
+
+        if (!mounted) return;
+
+        if (result?.facility) {
+          setFacility(result.facility);
+          setDoctors(result.doctors || []);
+        } else {
+          setFacility(null);
+          setDoctors([]);
+        }
+      } catch (e) {
+        console.warn('Unable to load facility:', e.message || e);
+        if (mounted) {
+          setFacility(null);
+          setDoctors([]);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    loadFacility();
+    return () => { mounted = false; };
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div className="page-wrapper">
+        <Navbar />
+        <main className="facility-main facility-loading">
+          <p>Loading facility…</p>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!facility) {
+    return (
+      <div className="page-wrapper">
+        <Navbar />
+        <main className="facility-main facility-loading">
+          <p>Facility not found.</p>
+          <button className="btn btn-outline" onClick={() => navigate('/')}>Back to Home</button>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const color = facility.color || '#0284c7';
+  const bgStyle = facility.background_image_url
+    ? {
+        backgroundImage: `linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.88)), url(${facility.background_image_url})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
+    : {
+        background: `linear-gradient(135deg, ${color}12 0%, ${color}28 100%)`,
+      };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="page-wrapper"
     >
       <Navbar />
-      
-      <main className="facility-main" style={{ background: facility.bgImage }}>
+
+      <main className="facility-main" style={bgStyle}>
         <div className="container">
           <button className="btn btn-outline back-btn" onClick={() => navigate(-1)}>
             <ArrowLeft size={18} /> Back
           </button>
-          
+
           <div className="facility-header">
-            <motion.div 
+            <motion.div
               className="facility-hero-icon"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: 'spring', delay: 0.2 }}
-              style={{ color: facility.color, backgroundColor: 'white' }}
+              style={{ color, backgroundColor: 'white' }}
             >
-              {facility.icon}
+              {getFacilityIcon(facility.icon, 64)}
             </motion.div>
-            <motion.h1 
+            <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              style={{ color: facility.color }}
+              style={{ color }}
             >
               {facility.name}
             </motion.h1>
-            <motion.p 
-              className="motto"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-            >
-              "{facility.motto}"
-            </motion.p>
+            {facility.motto && (
+              <motion.p
+                className="motto"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+              >
+                &ldquo;{facility.motto}&rdquo;
+              </motion.p>
+            )}
           </div>
 
-          <div className="professionals-section">
+          {facility.description && (
+            <motion.div
+              className="facility-description glass-panel"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <h2 className="section-title">About This Facility</h2>
+              <p>{facility.description}</p>
+            </motion.div>
+          )}
+
+          <motion.div
+            className="facility-doctors-section"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+          >
             <h2 className="section-title">Our Professionals</h2>
-            <div className="professionals-grid">
-              {facility.professionals.map((prof, idx) => (
-                <motion.div
-                  key={prof.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + (idx * 0.1) }}
-                >
-                  <ProfileCard prof={prof} color={facility.color} />
-                </motion.div>
-              ))}
-            </div>
-          </div>
+            {doctors.length > 0 ? (
+              <div className="facility-doctors-grid">
+                {doctors.map(doc => (
+                  <DoctorCard key={doc.id} doctor={doc} color={color} />
+                ))}
+              </div>
+            ) : (
+              <p className="facility-doctors-empty">Belum ada dokter yang ditugaskan ke fasilitas ini.</p>
+            )}
+          </motion.div>
         </div>
       </main>
 

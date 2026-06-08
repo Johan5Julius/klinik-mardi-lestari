@@ -1,5 +1,5 @@
 -- Supabase / PostgreSQL schema for Klinik Mardi Lestari
--- Basic tables used by the admin dashboard and Smart Check system.
+-- Revised schema for admin dashboard, Smart Check, and clinic content.
 
 CREATE TABLE IF NOT EXISTS doctors (
   id BIGSERIAL PRIMARY KEY,
@@ -12,9 +12,26 @@ CREATE TABLE IF NOT EXISTS doctors (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS facilities (
+  id BIGSERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  color TEXT NOT NULL DEFAULT '#0284c7',
+  motto TEXT,
+  icon TEXT NOT NULL DEFAULT 'Hospital',
+  background_image_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE doctors
+  ADD COLUMN IF NOT EXISTS facility_id BIGINT REFERENCES facilities(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS schedules (
   id BIGSERIAL PRIMARY KEY,
   doctor_id BIGINT NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  facility_id BIGINT REFERENCES facilities(id) ON DELETE SET NULL,
   day TEXT NOT NULL,
   time_slot TEXT NOT NULL,
   room TEXT,
@@ -59,6 +76,7 @@ CREATE TABLE IF NOT EXISTS smartcheck_questions (
   id BIGSERIAL PRIMARY KEY,
   question_text TEXT NOT NULL,
   category TEXT NOT NULL,
+  options JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -73,7 +91,6 @@ CREATE TABLE IF NOT EXISTS smartcheck_results (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Optional: store admin profiles if you want a local profile table linked to Supabase auth users.
 CREATE TABLE IF NOT EXISTS admin_profiles (
   id UUID PRIMARY KEY,
   full_name TEXT,

@@ -4,6 +4,119 @@
   min-height: calc(100vh - 200px);
 }
 
+.facility-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.facility-description {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.facility-description p {
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-top: 0.75rem;
+}
+
+.facility-doctors-section {
+  margin-top: 3rem;
+}
+
+.facility-doctors-section .section-title {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.facility-doctors-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.facility-doctor-card {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  align-items: flex-start;
+}
+
+.facility-doctor-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.facility-doctor-info h4 {
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-main);
+}
+
+.facility-doctor-spec {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+}
+
+.facility-doctor-schedules {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.facility-doctor-schedules li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-main);
+}
+
+.facility-doctor-no-schedule {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.facility-doctor-status {
+  display: inline-block;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.facility-doctor-status.status-on-leave {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.facility-doctor-status.status-inactive {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.facility-doctors-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 2rem;
+}
+
 .back-btn {
   margin-bottom: 2rem;
   background: white;

@@ -110,11 +110,13 @@ const PANELS = {
       { key: 'id', label: '#' },
       { key: 'name', label: 'Name' },
       { key: 'specialization', label: 'Specialization' },
+      { key: 'facility_name', label: 'Facility' },
       { key: 'status', label: 'Status', badge: true },
     ],
     fields: [
       { key: 'name', label: 'Full Name', type: 'text' },
       { key: 'specialization', label: 'Specialization', type: 'text' },
+      { key: 'facility_id', label: 'Facility', type: 'facility-select' },
       { key: 'status', label: 'Status', type: 'select', options: ['Active', 'On Leave', 'Inactive'] },
     ],
   },
@@ -137,6 +139,7 @@ const PANELS = {
       { key: 'color', label: 'Theme Color (Hex, e.g., #0284c7)', type: 'text' },
       { key: 'motto', label: 'Motto', type: 'text' },
       { key: 'icon', label: 'Icon Name (e.g., Stethoscope, Heart, Activity, ShieldPlus, Home)', type: 'select', options: ['Stethoscope', 'Heart', 'Activity', 'ShieldPlus', 'Home', 'Hospital'] },
+      { key: 'background_image', label: 'Background Photo', type: 'file' },
     ],
   },
   events: {
@@ -386,7 +389,10 @@ export default function AdminDashboard() {
         if (!mounted) return;
 
         // Map schedules to include doctor name
-        const doctorsList = doctors || [];
+        const doctorsList = (doctors || []).map(d => ({
+          ...d,
+          facility_name: (facilities || []).find(f => f.id === d.facility_id)?.name || '-',
+        }));
         const facilitiesList = facilities || [];
         let schedulesList = schedules || [];
         if (schedulesList.length) {
@@ -401,7 +407,7 @@ export default function AdminDashboard() {
 
         setRows(prev => ({
           ...prev,
-          doctors: doctors && doctors.length ? doctors : prev.doctors,
+          doctors: doctorsList.length ? doctorsList : prev.doctors,
           schedules: schedulesList,
           facilities: facilitiesList.length ? facilitiesList : prev.facilities,
           events: events && events.length ? events : prev.events,
@@ -440,6 +446,12 @@ export default function AdminDashboard() {
       if (initialData.image_url) {
         initialData.image = initialData.image || initialData.image_url;
       }
+    }
+    if (activePanel === 'facilities' && initialData.background_image_url) {
+      initialData.background_image = initialData.background_image || initialData.background_image_url;
+    }
+    if (activePanel === 'doctors' && initialData.facility_id) {
+      initialData.facility_id = String(initialData.facility_id);
     }
     setFormData(initialData);
     setModal({ type: 'edit' });
@@ -492,18 +504,45 @@ export default function AdminDashboard() {
     try {
       // Handle persistence for all panels through API
       if (activePanel === 'doctors') {
-        const payload = { name: formData.name, specialization: formData.specialization, status: formData.status };
+        const payload = {
+          name: formData.name,
+          specialization: formData.specialization,
+          status: formData.status,
+          facility_id: formData.facility_id ? Number(formData.facility_id) : null,
+        };
+        const mapDoctorRow = (doc) => ({
+          ...doc,
+          facility_name: rows.facilities.find(f => f.id === doc.facility_id)?.name || '-',
+        });
         if (modal.type === 'add') {
-          const insertData = await adminApi.doctors.create(payload);
+          const insertData = mapDoctorRow(await adminApi.doctors.create(payload));
           setRows(prev => ({ ...prev, doctors: [...prev.doctors, insertData] }));
           showToast('Doctor added successfully.');
         } else {
-          const updateData = await adminApi.doctors.update(formData.id, payload);
+          const updateData = mapDoctorRow(await adminApi.doctors.update(formData.id, payload));
           setRows(prev => ({ ...prev, doctors: prev.doctors.map(d => d.id === updateData.id ? updateData : d) }));
           showToast('Doctor updated successfully.');
         }
       } else if (activePanel === 'facilities') {
-        const payload = { name: formData.name, slug: formData.slug, description: formData.description, color: formData.color, motto: formData.motto, icon: formData.icon };
+        const existingBgUrl = typeof formData.background_image === 'string' && !formData.background_image.startsWith('data:')
+          ? formData.background_image
+          : formData.background_image_url;
+        const payload = {
+          name: formData.name,
+          slug: formData.slug,
+          description: formData.description,
+          color: formData.color,
+          motto: formData.motto,
+          icon: formData.icon,
+          background_image_url: existingBgUrl || null,
+        };
+
+        const bgFile = formData.background_imageFile || (formData.background_image instanceof File ? formData.background_image : null);
+        if (bgFile) {
+          const url = await uploadToStorage(bgFile, 'facilities');
+          if (url) payload.background_image_url = url;
+        }
+
         if (modal.type === 'add') {
           const insertData = await adminApi.facilities.create(payload);
           setRows(prev => ({ ...prev, facilities: [...prev.facilities, insertData] }));
@@ -750,6 +789,17 @@ export default function AdminDashboard() {
                     >
                       <option value="">Select…</option>
                       {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : field.type === 'facility-select' ? (
+                    <select
+                      id={`modal-${field.key}`}
+                      value={formData[field.key] || ''}
+                      onChange={e => setFormData(p => ({ ...p, [field.key]: e.target.value }))}
+                    >
+                      <option value="">Select facility…</option>
+                      {rows.facilities.map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
                     </select>
                   ) : field.type === 'textarea' ? (
                     <textarea
@@ -1065,14 +1115,45 @@ function SchedulesAccordionPanel({ doctors, schedules, facilities, setRows, show
 function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [emptyCategories, setEmptyCategories] = useState([]);
+  const [categories, setCategories] = useState([]);
   
-  // localModal: { type: 'add_cat'|'edit_cat'|'add_q'|'edit_q' }
+  // localModal: { type: 'add_cat'|'edit_cat'|'add_q'|'edit_q'|'threshold' }
   const [localModal, setLocalModal] = useState(null);
   const [categoryInput, setCategoryInput] = useState('');
   const [questionInput, setQuestionInput] = useState('');
+  const [thresholdLow, setThresholdLow] = useState(40);
+  const [thresholdMedium, setThresholdMedium] = useState(70);
   
   const [targetCategory, setTargetCategory] = useState('');
+  const [targetCategoryId, setTargetCategoryId] = useState(null);
   const [targetQuestion, setTargetQuestion] = useState(null);
+  const [questionOptions, setQuestionOptions] = useState([
+    { label: 'Low', value: 1 },
+    { label: 'Medium', value: 2 },
+    { label: 'High', value: 3 },
+  ]);
+
+  const defaultQuestionOptions = () => [
+    { label: 'Low', value: 1 },
+    { label: 'Medium', value: 2 },
+    { label: 'High', value: 3 },
+  ];
+
+  // Load categories from API
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const data = await adminApi.smartcheckCategories.getAll();
+        setCategories(data || []);
+      } catch (err) {
+        console.error('Error loading categories:', err);
+      }
+    }
+    loadCategories();
+  }, []);
+
+  // Helper to find category config
+  const getCategoryConfig = (catName) => categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
 
   // Group database questions by category
   const categoriesMap = {};
@@ -1119,6 +1200,44 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
     setCategoryInput('');
     setLocalModal(null);
     showToast(`Category "${name}" created.`);
+  };
+
+  const handleOpenThresholdModal = (catName) => {
+    const config = getCategoryConfig(catName);
+    setTargetCategory(catName);
+    if (config) {
+      setTargetCategoryId(config.id);
+      setThresholdLow(config.low_threshold || 40);
+      setThresholdMedium(config.medium_threshold || 70);
+    } else {
+      setTargetCategoryId(null);
+      setThresholdLow(40);
+      setThresholdMedium(70);
+    }
+    setLocalModal({ type: 'threshold' });
+  };
+
+  const handleSaveThreshold = async () => {
+    if (!targetCategoryId) {
+      showToast('Category not found.');
+      return;
+    }
+    if (thresholdLow >= thresholdMedium) {
+      showToast('Low threshold must be less than Medium threshold.');
+      return;
+    }
+    try {
+      await adminApi.smartcheckCategories.update(targetCategoryId, {
+        low_threshold: thresholdLow,
+        medium_threshold: thresholdMedium,
+      });
+      setCategories(prev => prev.map(c => c.id === targetCategoryId ? { ...c, low_threshold: thresholdLow, medium_threshold: thresholdMedium } : c));
+      setLocalModal(null);
+      showToast('Risk thresholds updated successfully.');
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving thresholds: ' + (err.message || err));
+    }
   };
 
   const handleOpenEditCategory = (cat) => {
@@ -1201,6 +1320,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
   const handleOpenAddQuestion = (cat) => {
     setTargetCategory(cat);
     setQuestionInput('');
+    setQuestionOptions(defaultQuestionOptions());
     setLocalModal({ type: 'add_q' });
   };
 
@@ -1210,7 +1330,8 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
     try {
       const newQ = await adminApi.smartcheck.create({
         question_text: text,
-        category: targetCategory
+        category: targetCategory,
+        options: questionOptions,
       });
 
       // Update parent state
@@ -1233,6 +1354,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
   const handleOpenEditQuestion = (q) => {
     setTargetQuestion(q);
     setQuestionInput(q.question_text || q.title || '');
+    setQuestionOptions(Array.isArray(q.options) && q.options.length ? q.options : defaultQuestionOptions());
     setLocalModal({ type: 'edit_q' });
   };
 
@@ -1242,7 +1364,8 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
     try {
       const updatedQ = await adminApi.smartcheck.update(targetQuestion.id, {
         question_text: text,
-        category: targetQuestion.category
+        category: targetQuestion.category,
+        options: questionOptions,
       });
 
       // Update parent state
@@ -1299,6 +1422,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
                   <span className="question-count">({questions.length} questions)</span>
                 </div>
                 <div className="category-actions" onClick={e => e.stopPropagation()}>
+                  <button className="icon-btn" onClick={() => handleOpenThresholdModal(cat)} title="Edit Risk Thresholds" style={{ background: '#e0e7ff', color: '#3730a3' }}><Settings size={14} /></button>
                   <button className="icon-btn edit-btn" onClick={() => handleOpenEditCategory(cat)} title="Rename Category"><Pencil size={14} /></button>
                   <button className="icon-btn del-btn" onClick={() => handleDeleteCategory(cat)} title="Delete Category"><Trash2 size={14} /></button>
                 </div>
@@ -1317,6 +1441,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
                           <tr>
                             <th style={{ width: '80px' }}>ID</th>
                             <th>Question Text</th>
+                            <th>Options</th>
                             <th style={{ width: '120px', textAlign: 'center' }}>Actions</th>
                           </tr>
                         </thead>
@@ -1325,6 +1450,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
                             <tr key={q.id || idx}>
                               <td>{q.id}</td>
                               <td>{q.question_text || q.title}</td>
+                              <td>{(Array.isArray(q.options) ? q.options : []).map(opt => `${opt.label || opt} (${opt.value ?? ''})`).join(', ')}</td>
                               <td className="action-cell" style={{ justifyContent: 'center' }}>
                                 <button className="icon-btn edit-btn" onClick={() => handleOpenEditQuestion(q)} aria-label="Edit question"><Pencil size={14} /></button>
                                 <button className="icon-btn del-btn" onClick={() => handleDeleteQuestion(q.id)} aria-label="Delete question"><Trash2 size={14} /></button>
@@ -1353,6 +1479,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
             title={
               localModal.type === 'add_cat' ? 'Add Category' :
               localModal.type === 'edit_cat' ? 'Rename Category' :
+              localModal.type === 'threshold' ? `Edit Risk Thresholds - ${targetCategory}` :
               localModal.type === 'add_q' ? `Add Question to "${targetCategory}"` :
               'Edit Question'
             }
@@ -1371,18 +1498,75 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
                     autoFocus
                   />
                 </div>
+              ) : localModal.type === 'threshold' ? (
+                <>
+                  <div className="modal-field">
+                    <label htmlFor="low-threshold-input">Low Risk Threshold (%)</label>
+                    <input
+                      id="low-threshold-input"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={thresholdLow}
+                      onChange={e => setThresholdLow(Number(e.target.value))}
+                      placeholder="40"
+                      autoFocus
+                    />
+                    <p className="modal-help-text">Score below this percentage is considered Low Risk.</p>
+                  </div>
+
+                  <div className="modal-field">
+                    <label htmlFor="med-threshold-input">Medium Risk Threshold (%)</label>
+                    <input
+                      id="med-threshold-input"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={thresholdMedium}
+                      onChange={e => setThresholdMedium(Number(e.target.value))}
+                      placeholder="70"
+                    />
+                    <p className="modal-help-text">Score between Low and Medium is Medium Risk. Above Medium is High Risk.</p>
+                  </div>
+                </>
               ) : (
-                <div className="modal-field">
-                  <label htmlFor="quest-text-input">Question Text</label>
-                  <textarea
-                    id="quest-text-input"
-                    value={questionInput}
-                    onChange={e => setQuestionInput(e.target.value)}
-                    placeholder="e.g. How often do you check your blood pressure?"
-                    rows={4}
-                    autoFocus
-                  />
-                </div>
+                <>
+                  <div className="modal-field">
+                    <label htmlFor="quest-text-input">Question Text</label>
+                    <textarea
+                      id="quest-text-input"
+                      value={questionInput}
+                      onChange={e => setQuestionInput(e.target.value)}
+                      placeholder="e.g. How often do you check your blood pressure?"
+                      rows={4}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="modal-field">
+                    <label>Answer Options & Scores</label>
+                    <div className="modal-options-list">
+                      {questionOptions.map((opt, idx) => (
+                        <div key={idx} className="modal-option-row">
+                          <input
+                            type="text"
+                            value={opt.label}
+                            onChange={e => setQuestionOptions(prev => prev.map((item, i) => i === idx ? { ...item, label: e.target.value } : item))}
+                            placeholder={`Option ${idx + 1} label`}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            value={opt.value}
+                            onChange={e => setQuestionOptions(prev => prev.map((item, i) => i === idx ? { ...item, value: Number(e.target.value) } : item))}
+                            placeholder="Score"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="modal-help-text">Set the answer choice label and its point value for screening.</p>
+                  </div>
+                </>
               )}
               <div className="modal-actions">
                 <button className="modal-cancel" onClick={() => setLocalModal(null)}>Cancel</button>
@@ -1391,6 +1575,7 @@ function SmartCheckAccordionPanel({ rows, setRows, showToast }) {
                   onClick={
                     localModal.type === 'add_cat' ? handleAddCategorySubmit :
                     localModal.type === 'edit_cat' ? handleRenameCategorySubmit :
+                    localModal.type === 'threshold' ? handleSaveThreshold :
                     localModal.type === 'add_q' ? handleAddQuestionSubmit :
                     handleEditQuestionSubmit
                   }
